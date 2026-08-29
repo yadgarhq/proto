@@ -1,0 +1,89 @@
+// Dashboards (D44). A first-class entity rather than a preference blob, because
+// org and team dashboards are seeded from a repository and carry a visibility.
+// Personal preferences — including which dashboards a user has hidden — live in
+// profile/v1 instead.
+syntax = "proto3";
+
+package yadgar.viz.v1;
+
+import "yadgar/common/v1/common.proto";
+import "google/protobuf/field_mask.proto";
+
+message Dashboard {
+  yadgar.common.v1.Meta meta = 1;
+
+  // Display name. NOT unique (D42): a user's "Overview" and an org "Overview"
+  // are two records, distinguished by their URN and shown with a scope label.
+  string name = 16;
+  string description = 17;
+
+  // Opaque layout definition. viz-db does not parse it.
+  bytes definition = 18;
+
+  repeated string tags = 19;
+
+  // True for system, org and team dashboards, which arrive from a seed
+  // repository and are read-only at runtime (D34's write-path table, D35).
+  // Customising one is copy-on-edit into the user's own scope.
+  bool seeded = 20;
+}
+
+message CreateDashboardRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  yadgar.common.v1.Scope scope = 2;
+  Dashboard dashboard = 3;
+}
+message CreateDashboardResponse { yadgar.common.v1.Meta meta = 1; }
+
+message UpdateDashboardRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  yadgar.common.v1.Scope scope = 2;
+  string id = 3;
+  uint64 expect_version = 4;
+  Dashboard dashboard = 5;
+  google.protobuf.FieldMask update_mask = 6;
+}
+message UpdateDashboardResponse { yadgar.common.v1.Meta meta = 1; }
+
+message GetDashboardRequest {
+  yadgar.common.v1.Scope scope = 1;
+  string id = 2;
+}
+message GetDashboardResponse { Dashboard dashboard = 1; }
+
+message BatchGetDashboardsRequest {
+  yadgar.common.v1.Scope scope = 1;
+  repeated string ids = 2;
+}
+message BatchGetDashboardsResponse { repeated Dashboard dashboards = 1; }
+
+// Dashboards COEXIST; they do not resolve (D44). This returns everything the
+// caller can see at every scope — their own, their teams', the org's and the
+// seeded set — in one list. There is no most-specific-wins step: that belongs
+// to blocks (D50), which are injected rather than browsed.
+message ListDashboardsRequest {
+  yadgar.common.v1.Scope scope = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+message ListDashboardsResponse {
+  repeated Dashboard dashboards = 1;
+  string next_page_token = 2;
+}
+
+message DeleteDashboardRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  yadgar.common.v1.Scope scope = 2;
+  string id = 3;
+  uint64 expect_version = 4;
+}
+message DeleteDashboardResponse {}
+
+service VizDbService {
+  rpc CreateDashboard(CreateDashboardRequest) returns (CreateDashboardResponse);
+  rpc UpdateDashboard(UpdateDashboardRequest) returns (UpdateDashboardResponse);
+  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
+  rpc BatchGetDashboards(BatchGetDashboardsRequest) returns (BatchGetDashboardsResponse);
+  rpc ListDashboards(ListDashboardsRequest) returns (ListDashboardsResponse);
+  rpc DeleteDashboard(DeleteDashboardRequest) returns (DeleteDashboardResponse);
+}

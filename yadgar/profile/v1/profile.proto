@@ -1,0 +1,61 @@
+// Per-user preferences (D43). The ONLY per-user store: configuration is
+// cluster-wide, git-controlled and has no user axis, so nothing here overlaps
+// with it.
+syntax = "proto3";
+
+package yadgar.profile.v1;
+
+import "yadgar/common/v1/common.proto";
+
+// An opaque blob under a module's namespace. profile-db knows NO schemas: the
+// owning module defines and validates what is inside. That is what stops this
+// module becoming the coupling point where adding a viz preference means a
+// schema change here and every module waits on its release — the failure D7
+// names for a driver repo holding everyone's adapters.
+message Preference {
+  yadgar.common.v1.Meta meta = 1;
+
+  // The owning module: "viz", "cli", "ask". Namespaced so two modules cannot
+  // collide on a key name.
+  string namespace = 16;
+
+  // Opaque to this module. Encoding is the owner's business.
+  bytes value = 17;
+}
+
+message GetPreferenceRequest {
+  yadgar.common.v1.Scope scope = 1;
+  string namespace = 2;
+}
+message GetPreferenceResponse { Preference preference = 1; }
+
+message BatchGetPreferencesRequest {
+  yadgar.common.v1.Scope scope = 1;
+  repeated string namespaces = 2;
+}
+message BatchGetPreferencesResponse { repeated Preference preferences = 1; }
+
+message SetPreferenceRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  yadgar.common.v1.Scope scope = 2;
+  string namespace = 3;
+  bytes value = 4;
+  // Zero on first write for a namespace.
+  uint64 expect_version = 5;
+}
+message SetPreferenceResponse { yadgar.common.v1.Meta meta = 1; }
+
+message DeletePreferenceRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  yadgar.common.v1.Scope scope = 2;
+  string namespace = 3;
+  uint64 expect_version = 4;
+}
+message DeletePreferenceResponse {}
+
+service ProfileDbService {
+  rpc GetPreference(GetPreferenceRequest) returns (GetPreferenceResponse);
+  rpc BatchGetPreferences(BatchGetPreferencesRequest) returns (BatchGetPreferencesResponse);
+  rpc SetPreference(SetPreferenceRequest) returns (SetPreferenceResponse);
+  rpc DeletePreference(DeletePreferenceRequest) returns (DeletePreferenceResponse);
+}

@@ -19,6 +19,11 @@ additive-only rule is enforced structurally rather than by discipline.
 | `yadgar/task/v1` | `Task` + `TaskDbService` — addressed |
 | `yadgar/recall/v1` | `RetrievalProviderService` fanout contract + `RecallService` |
 | `yadgar/audit/v1` | `WriteEvent` / `ReadEvent` + `AuditDbService` |
+| `yadgar/project/v1` | `Project` + `ProjectDbService` — hierarchical paths, `ResolveProject` |
+| `yadgar/tag/v1` | `Tag` + `TagDbService` — the canonical vocabulary, `ResolveTags` |
+| `yadgar/profile/v1` | `Preference` + `ProfileDbService` — opaque per-user blobs |
+| `yadgar/viz/v1` | `Dashboard` + `VizDbService` — coexisting, not resolved |
+| `yadgar/queue/v1` | `Notice` + `QueueDbService` — claim-and-ack, addressed to a project |
 
 `AgentPrompt`, `Block`, and `Bookmark` follow `yadgar/adr/v1` exactly (addressed,
 no provider). `Entity` / `Relationship` follow `yadgar/memory/v1` (ranked,
@@ -48,7 +53,11 @@ half of a logic/`-db` twin pair the service is.
 - **`Scope` is attested, never self-declared.** The gateway derives it from the
   request's credentials. A caller cannot claim a `team_id` it is not in.
 - **Batch reads exist on every module** so a fanout never becomes an N+1 across
-  the network — the specific risk D5's coarse-API rule exists to prevent.
+  the network — the specific risk D5's coarse-API rule exists to prevent. Their limit
+  is **derived from bytes, not declared as a count** (D56): gRPC's 4 MB default message
+  size binds long before MariaDB's 16 MB `MEDIUMTEXT`, so a `-db` that would overflow
+  returns `RESOURCE_EXHAUSTED` naming how many it could have returned. A uniform sanity
+  cap rejects absurd requests early, but it is not the mechanism.
 - **One delete verb**, owner-only, soft (D26). No unshare rpc, no erase rpc.
   Physical removal is administrative.
 - **Services are coarse:** one rpc = one business operation = one transaction
@@ -85,9 +94,8 @@ read stream is not evidence a read did not happen.
   undecided — see D12.
 - **Reverse crossrefs** (O4). `WikiPage.links` holds outbound edges only, so
   "what links here" is a fanout until a decision is made.
-- **Not yet drafted, and now required.** `viz/v1` (`Dashboard`, D44), `profile/v1`
-  (namespaced preference blobs, D43), `tag/v1` (`Resolve`, returning canonical forms and
-  marking unknowns `PROPOSED`, D51), `project/v1` (the registry, D52), and the notice channel of D39/D47 — a claim-and-ack
-  shape rather than a read, addressed to `(user, project)`, which every module's write
-  path depends on. `config/v1` shrinks to reads only (D43).
+- ~~**Not yet drafted.**~~ `project/v1`, `tag/v1`, `profile/v1`, `viz/v1` and
+  `queue/v1` are now drafted and pass `buf lint` / `buf build`. Not ratified.
+- **Still undrafted.** `config/v1`, which shrinks to reads only under D43, and the
+  `Maintain` rpc D40 requires on every `-db`.
 - **Pagination** uses page-token strings; the token format is unspecified.

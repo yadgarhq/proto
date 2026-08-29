@@ -1,0 +1,98 @@
+// The notice channel (D39, D47). A write failure is addressed to a PROJECT, not
+// to the instance that caused it — instances are ephemeral, projects are not —
+// and is delivered by whichever instance of that project calls next.
+//
+// A Notice deliberately carries no Meta: it is queue bookkeeping, not a
+// user-facing entity. No visibility ladder, no soft delete, no CAS. Same
+// reasoning as audit/v1's events.
+syntax = "proto3";
+
+package yadgar.queue.v1;
+
+import "yadgar/common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+enum NoticeKind {
+  NOTICE_KIND_UNSPECIFIED = 0;
+  // A write was rejected. Addressed to (user_id, project_id) and outlives the
+  // instance, because any instance of that project can rectify it.
+  NOTICE_KIND_WRITE_FAILED = 1;
+  // Registration is needed: a path resolved to an ancestor rather than exactly
+  // (D52 as amended by D53). The instance cannot fix this itself.
+  NOTICE_KIND_PROJECT_UNREGISTERED = 2;
+  // Keyed on the instance and expiring with it — the condition has passed, and
+  // telling a different instance about it later is noise (D46).
+  NOTICE_KIND_THROTTLED = 3;
+  NOTICE_KIND_BUDGET_EXCEEDED = 4;
+}
+
+enum NoticeStage {
+  NOTICE_STAGE_UNSPECIFIED = 0;
+  // Within the soft window: waiting for the instance that caused it, which has
+  // the most context.
+  NOTICE_STAGE_ORIGIN = 1;
+  // Past the soft window: any instance of the same user in the same project may
+  // claim it. NOT deleted at the boundary — only who may claim it changes.
+  NOTICE_STAGE_PROJECT = 2;
+}
+
+message Notice {
+  string id = 1;
+  NoticeKind kind = 2;
+  NoticeStage stage = 3;
+
+  // The durable addressee.
+  string user_id = 4;
+  string project_id = 5;
+
+  // The instance that caused it — a delivery HINT, never the key (D47).
+  string origin_instance_id = 6;
+
+  // What was attempted and why it was rejected, in enough detail that a fresh
+  // instance can act without the dead session's context.
+  string summary = 7;
+  // URN of the record involved — under D41 a duplicate rejection names what it
+  // collided with, so the caller can look rather than guess.
+  string target_urn = 8;
+
+  google.protobuf.Timestamp created_at = 9;
+
+  // Similar failures collapse beyond a per-project cap, so a project producing
+  // failures faster than they are collected does not grow an unbounded set.
+  // 1 unless collapsed (D47).
+  uint32 collapsed_count = 10;
+}
+
+// Taking a notice is an atomic CLAIM, not a read. Several instances of one
+// project may call concurrently; an unclaimed read hands the same failure to
+// all of them and each rectifies it, producing duplicates from the mechanism
+// built to prevent duplicates (D47).
+message ClaimNoticesRequest {
+  yadgar.common.v1.Scope scope = 1;
+  int32 max = 2;
+}
+message ClaimNoticesResponse {
+  repeated Notice notices = 1;
+  // Claimed but not yet acked. Ack or they return to the pool.
+  string claim_token = 2;
+}
+
+message AckNoticesRequest {
+  yadgar.common.v1.Scope scope = 1;
+  string claim_token = 2;
+  repeated string notice_ids = 3;
+}
+message AckNoticesResponse {}
+
+// Internal: called by the parser when a write is rejected. Never by an agent.
+message PublishNoticeRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  Notice notice = 2;
+}
+message PublishNoticeResponse { string id = 1; }
+
+service QueueDbService {
+  rpc ClaimNotices(ClaimNoticesRequest) returns (ClaimNoticesResponse);
+  rpc AckNotices(AckNoticesRequest) returns (AckNoticesResponse);
+  rpc PublishNotice(PublishNoticeRequest) returns (PublishNoticeResponse);
+}
