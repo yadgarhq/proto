@@ -20,8 +20,13 @@ enum Visibility {
 
 // Carried by every user-facing entity (D8, D9, D12, D26).
 message Meta {
-  // URN, e.g. "yadgar:memory:01J8ZK7C4M9QX2VBNE5RTYH3PD".
-  // Assigned by the owning -db service; never supplied by a client.
+  // URN carrying a UUID, e.g. "yadgar:memory:0192f3c1-8a4e-7c2d-9b11-5f0e7a3d84c6".
+  // Assigned by the owning -db service; never supplied by a client. UUIDv7 for
+  // generated records (time-ordered, so keyset pagination and index locality
+  // behave); UUIDv5 over namespace + source file path for seeded ones, because
+  // D35 requires re-seeding to update in place rather than duplicate (D42).
+  // Never an engine's integer primary key — that is per-engine and stops being
+  // portable the moment a module swaps engines (D7).
   string id = 1;
 
   // Compare-and-set counter (D8). Incremented by the -db service on every
@@ -72,6 +77,12 @@ message Scope {
   // Every team the caller belongs to. A -db service filters
   // visibility == TEAM against this list.
   repeated string team_ids = 3;
+
+  // The calling instance — one agent session, narrower than the user, who may run
+  // several at once. Two things need it: routing a write-failure notice back to the
+  // instance that wrote (D39), and throttling one runaway session without throttling
+  // the person (D46).
+  string instance_id = 4;
 }
 
 // Applied to every mutating RPC (D9). The same key replayed returns the

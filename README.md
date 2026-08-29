@@ -24,7 +24,8 @@ additive-only rule is enforced structurally rather than by discipline.
 no provider). `Entity` / `Relationship` follow `yadgar/memory/v1` (ranked,
 graph-scored). They are omitted only to keep the draft reviewable.
 
-Verified with `buf lint` and `buf build` (buf 1.72.0) — both clean. The directory
+Verified with `buf lint` and `buf build` (buf 1.72.0) — both clean, re-run after the
+D39–D46 amendments. The directory
 layout mirrors the package path and services carry the `Service` suffix because
 buf's `STANDARD` lint set requires both; `Db` is kept in the name to say which
 half of a logic/`-db` twin pair the service is.
@@ -35,7 +36,9 @@ half of a logic/`-db` twin pair the service is.
   every row of every store. 13–15 are reserved for envelope growth; entity
   fields start at 16.
 - **Every mutating rpc carries `Idempotency`** (D9) — a retrying load balancer
-  will deliver a write more than once.
+  will deliver a write more than once. A repeated key is a **replay**: it returns the
+  original outcome and is never reported as a failure, or an instance told its write
+  failed will "fix" it by writing a duplicate.
 - **Every update carries `expect_version`** (D8). Mismatch is
   `FAILED_PRECONDITION`; the caller re-reads, recomputes, retries.
 - **`Scope` is attested, never self-declared.** The gateway derives it from the
@@ -69,11 +72,17 @@ read stream is not evidence a read did not happen.
 
 ## Open
 
-- **ID scheme.** Drafted as ULID-in-URN everywhere, with `Adr.number` and
-  `Task.number` as separate integer sequences because `ADR-0466` is how those
-  records are actually referred to. Not ratified.
+- ~~**ID scheme.**~~ **RESOLVED by D42.** UUID-in-URN everywhere: UUIDv7 for
+  generated records, UUIDv5 over namespace + source path for seeded ones, so
+  re-seeding updates in place rather than duplicating (D35). `Adr.number` and
+  `Task.number` stay as separate integer sequences — they are scoped human
+  references, not identity. Names carry no uniqueness anywhere.
 - **`provenance_agent`** sits on `Memory` only. Whether it belongs in `Meta` is
   undecided — see D12.
 - **Reverse crossrefs** (O4). `WikiPage.links` holds outbound edges only, so
   "what links here" is a fanout until a decision is made.
+- **Not yet drafted, and now required.** `viz/v1` (`Dashboard`, D44), `profile/v1`
+  (namespaced preference blobs, D43), and the D39 notice channel — the shape that
+  carries a failed write back to an instance on its next call, which every module's
+  write path depends on. `config/v1` shrinks to reads only (D43).
 - **Pagination** uses page-token strings; the token format is unspecified.

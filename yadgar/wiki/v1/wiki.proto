@@ -8,7 +8,12 @@ import "google/protobuf/field_mask.proto";
 message WikiPage {
   yadgar.common.v1.Meta meta = 1;
 
-  string slug = 16;
+  // Display name. NOT an identifier and NOT unique — ten pages may share one
+  // (D42). The corpus is kept clean by the three-scope dedup and surprise gate
+  // (D41), not by a uniqueness constraint, which never caught "deploy-notes" vs
+  // "deploy_notes" anyway. Name -> URN resolution is an INDEX on this column with
+  // a covering select, never a second table.
+  string name = 16;
   string title = 17;
   string content = 18;
   string category = 19;
@@ -36,13 +41,12 @@ message UpdateWikiPageRequest {
 }
 message UpdateWikiPageResponse { WikiPage page = 1; }
 
+// Addressed by URN only. There is no by-name arm: a name is not unique (D42), so
+// a by-name get would have to pick one of several matches. Named entry points are
+// bookmarks, which map a stable name to a URN per scope (D41).
 message GetWikiPageRequest {
   yadgar.common.v1.Scope scope = 1;
-  // Exactly one of the two.
-  oneof key {
-    string id = 2;
-    string slug = 3;
-  }
+  string id = 2;
 }
 message GetWikiPageResponse { WikiPage page = 1; }
 
