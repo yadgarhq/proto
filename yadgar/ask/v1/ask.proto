@@ -1,0 +1,108 @@
+// `ask` — the default retrieval tool (D28). Takes a question, drives retrieval
+// itself under a hop cap, and returns an answer whose every claim is cited.
+//
+// It returns IDENTIFIERS, NOT PASSAGES. There is deliberately no raw_results
+// field: a caller wanting a record's content fetches it by URN from the owning
+// module's batch-get, paying for exactly what it asked for. Making the caller
+// pay context for every passage retrieved is the cost this tool exists to
+// remove.
+//
+// Ask is a logic service, not a -db twin: it holds no store. Conversation
+// context lives in the shared cache under an opaque token (D29), so any replica
+// can serve the next turn and no session affinity is needed.
+syntax = "proto3";
+
+package yadgar.ask.v1;
+
+import "yadgar/common/v1/common.proto";
+
+message AskRequest {
+  yadgar.common.v1.Scope scope = 1;
+  string question = 2;
+
+  // Total budget. The gateway sets a default; retrieval takes its share first
+  // and the LLM gets the remainder, cancelled rather than permitted to overrun.
+  uint32 deadline_ms = 3;
+
+  // Hop cap. 1 = plan once, retrieve once, answer. Not a tuning knob but a
+  // safety property: without it a question the corpus cannot answer becomes an
+  // unbounded loop against the one latency-critical path in the system.
+  uint32 max_hops = 4;
+
+  // Opaque handle from a previous AskResponse (D29). The prior context lives in
+  // the shared cache under this key with a TTL; no service process holds it.
+  // Expired or evicted is NOT an error — the request is treated as a new
+  // conversation and the response says so.
+  optional string conversation_token = 5;
+}
+
+message Citation {
+  // Marker used inline in the answer text, e.g. 1 renders as [1]. Claims are
+  // cited individually so a statement maps to the record it came from — which
+  // is what makes a wrong step correctable at the source, and what makes an
+  // uncited claim visibly ungrounded.
+  uint32 marker = 1;
+  string urn = 2;
+  // What the record IS, not what it says — a name, an ADR number, a title.
+  // Capped short. Never a snippet: a label lets an irrelevant citation be
+  // spotted without fetching it.
+  string label = 3;
+  double relevance = 4;
+  uint32 hop = 5;
+}
+
+// Two or more cited records supporting conflicting claims (D32). Reported,
+// never resolved silently: a confident answer synthesised from contradictory
+// sources hides the thing the caller most needs to know, behind fluent prose.
+message Disagreement {
+  repeated uint32 markers = 1;
+  string description = 2;
+}
+
+// Why an answer was not synthesised. A single boolean cannot carry this: the
+// caller must tell "the LLM is down" from "you are being throttled", because
+// only one of those is theirs to act on (D46).
+enum DegradationReason {
+  // Not degraded — synthesized == true.
+  DEGRADATION_REASON_UNSPECIFIED = 0;
+  DEGRADATION_REASON_LLM_UNAVAILABLE = 1;
+  DEGRADATION_REASON_DEADLINE = 2;
+  // Admission control, answered immediately from recall (D46). NOT delay:
+  // a throttle implemented as latency burns the deadline and becomes a denial.
+  DEGRADATION_REASON_THROTTLED = 3;
+  // The uniform ceiling was exceeded. Alerts and throttles; never denies.
+  DEGRADATION_REASON_BUDGET = 4;
+}
+
+message AskTiming {
+  uint32 retrieval_ms = 1;
+  uint32 synthesis_ms = 2;
+  uint32 total_ms = 3;
+}
+
+message AskResponse {
+  string answer = 1;
+  repeated Citation citations = 2;
+
+  // false = this is a template answer over the top-ranked citations, not a
+  // generated one. degradation_reason says why. ask NEVER returns an error for
+  // a retrieval or synthesis shortfall — it degrades, and a caller must always
+  // be able to tell the two apart.
+  bool synthesized = 3;
+
+  repeated Disagreement disagreements = 4;
+
+  string conversation_token = 5;
+  // True when the supplied token had expired and this was treated as a fresh
+  // conversation. Silently answering without context the caller believes is
+  // present is the one failure mode this must not have.
+  bool conversation_restarted = 6;
+
+  uint32 hops_used = 7;
+  DegradationReason degradation_reason = 8;
+  AskTiming timing = 9;
+}
+
+service AskService {
+  rpc Ask(AskRequest) returns (AskResponse);
+}

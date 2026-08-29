@@ -1,0 +1,55 @@
+# Every yadgarhq repo carries pre-commit (D59). Hook failure is signal, not
+# obstacle: fix the cause and re-stage. Never --no-verify.
+#
+# This is the CONTRACT repo, so it carries the baseline plus buf. A Rust module
+# repo swaps the buf block for the cargo one — see D59 for the full baseline.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      # PARSE GATES. A file a parser cannot load at all still passes any check
+      # that reads it as text and regexes it — which is how a malformed compose
+      # file once kept every version gate green in the predecessor repo.
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+
+  - repo: local
+    hooks:
+      # Secrets never reach a public repo in the first place. Force-pushing does
+      # NOT scrub GitHub history — PR refs pin every commit and are never
+      # garbage-collected — so a leaked credential means deleting and recreating
+      # the repository. Prevention is the only cheap point in that timeline.
+      - id: gitleaks
+        name: Detect secrets and credentials
+        language: system
+        entry: gitleaks git --pre-commit --staged --verbose
+        pass_filenames: false
+
+  - repo: https://github.com/bufbuild/buf
+    rev: v1.72.0
+    hooks:
+      # Canonical formatting. Rewrites files, so a first run fails the commit
+      # and you re-stage — the same shape as terraform_fmt.
+      - id: buf-format
+      # STANDARD lint: directory layout mirrors the package path, services carry
+      # the Service suffix.
+      - id: buf-lint
+      # D15's additive-only rule, enforced at commit time rather than only in
+      # CI. Local git, so it costs nothing — and a break caught here never
+      # reaches a branch someone else has pulled.
+      #
+      # Pinned to the FIRST tag of the major, not the latest, and that is
+      # deliberate: D15 says a change is additive-only *within a major*, so v1
+      # must stay compatible with v1.0.0 forever — not merely with whatever
+      # shipped last. Comparing against the latest tag would let the contract
+      # drift away from v1.0.0 one compatible step at a time. Bump this only
+      # when a v2 exists, to that major's first tag.
+      - id: buf-breaking
+        args: [--against, .git#tag=v1.0.0]
