@@ -34,7 +34,10 @@ message CreateTaskRequest {
   yadgar.common.v1.Scope scope = 2;
   Task task = 3;
 }
-message CreateTaskResponse { Task task = 1; }
+message CreateTaskResponse {
+  yadgar.common.v1.Meta meta = 1;
+  uint32 number = 2;
+}
 
 message UpdateTaskRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -44,7 +47,7 @@ message UpdateTaskRequest {
   Task task = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateTaskResponse { Task task = 1; }
+message UpdateTaskResponse { yadgar.common.v1.Meta meta = 1; }
 
 message GetTaskRequest {
   yadgar.common.v1.Scope scope = 1;

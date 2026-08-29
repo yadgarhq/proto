@@ -32,7 +32,11 @@ message CreateMemoryRequest {
   yadgar.common.v1.Scope scope = 2;
   Memory memory = 3;  // meta.id, version, timestamps ignored on input
 }
-message CreateMemoryResponse { Memory memory = 1; }
+// The envelope only. The caller sent the content and does not need it echoed;
+// what it cannot know is the assigned id, version and timestamps (D48). Echoing
+// the entity charges an agent client twice for the same bytes, and context is
+// the scarcest thing it has.
+message CreateMemoryResponse { yadgar.common.v1.Meta meta = 1; }
 
 message UpdateMemoryRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -44,7 +48,7 @@ message UpdateMemoryRequest {
   Memory memory = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateMemoryResponse { Memory memory = 1; }
+message UpdateMemoryResponse { yadgar.common.v1.Meta meta = 1; }
 
 message GetMemoryRequest { yadgar.common.v1.Scope scope = 1; string id = 2; }
 message GetMemoryResponse { Memory memory = 1; }

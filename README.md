@@ -41,6 +41,10 @@ half of a logic/`-db` twin pair the service is.
   failed will "fix" it by writing a duplicate.
 - **Every update carries `expect_version`** (D8). Mismatch is
   `FAILED_PRECONDITION`; the caller re-reads, recomputes, retries.
+- **A write returns `Meta`, never the entity** (D48). The caller sent the content;
+  what it cannot know is the assigned id, version and timestamps. `adr` and `task`
+  add `number`, for the same reason. Echoing the body charges an agent client twice
+  for bytes it already holds.
 - **`Scope` is attested, never self-declared.** The gateway derives it from the
   request's credentials. A caller cannot claim a `team_id` it is not in.
 - **Batch reads exist on every module** so a fanout never becomes an N+1 across

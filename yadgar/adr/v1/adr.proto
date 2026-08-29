@@ -39,7 +39,12 @@ message CreateAdrRequest {
   yadgar.common.v1.Scope scope = 2;
   Adr adr = 3;  // number assigned by the service
 }
-message CreateAdrResponse { Adr adr = 1; }
+// Returns the envelope plus the assigned number — the two things the caller
+// cannot know. Not the Adr it just sent (D48).
+message CreateAdrResponse {
+  yadgar.common.v1.Meta meta = 1;
+  uint32 number = 2;
+}
 
 message UpdateAdrRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -49,7 +54,7 @@ message UpdateAdrRequest {
   Adr adr = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateAdrResponse { Adr adr = 1; }
+message UpdateAdrResponse { yadgar.common.v1.Meta meta = 1; }
 
 message GetAdrRequest {
   yadgar.common.v1.Scope scope = 1;
