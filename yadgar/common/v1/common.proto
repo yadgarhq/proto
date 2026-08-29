@@ -79,9 +79,11 @@ message Scope {
   repeated string team_ids = 3;
 
   // The calling instance — one agent session, narrower than the user, who may run
-  // several at once. Two things need it: routing a write-failure notice back to the
-  // instance that wrote (D39), and throttling one runaway session without throttling
-  // the person (D46).
+  // several at once. Two uses, and they differ: throttling one runaway session without
+  // throttling the person (D46), where the instance IS the key; and delivering a
+  // write-failure notice (D39), where it is only a hint. A write failure is addressed
+  // to (user_id, project_id) so it survives the instance that caused it and is
+  // rectified by whichever instance of that project calls next (D47).
   string instance_id = 4;
 }
 
