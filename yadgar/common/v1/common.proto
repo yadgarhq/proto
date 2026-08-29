@@ -34,7 +34,11 @@ message Meta {
   // with FAILED_PRECONDITION.
   uint64 version = 2;
 
-  // Repo/project scope, e.g. "m-agahi/yadgar".
+  // Hierarchical project path of variable depth (D53): "quinyx/forecast" for a
+  // single repo, "quinyx/qwfm/forecast" for a service inside a monorepo. The
+  // hierarchy is SEMANTIC — a query at "quinyx/qwfm" matches every descendant —
+  // so a -db filters this by prefix, not by equality. Renames resolve through an
+  // alias rather than rewriting records.
   string project_id = 3;
 
   // Who PRIVATE means, and the only user permitted to delete (D26).
@@ -71,8 +75,14 @@ message Meta {
 
 // Caller identity and reach, attested by the gateway from the request's
 // credentials. Never supplied by the caller itself.
+// Scoping is TWO-DIMENSIONAL and the axes are independent (D53). Visibility says
+// who may see a record; project depth says where it lives. A TEAM-visible record
+// at "quinyx/qwfm/forecast" reaches a teammate querying "quinyx/qwfm" because it
+// passes on both axes. Collapsing them into one ladder is the plausible-looking
+// mistake.
 message Scope {
   string user_id = 1;
+  // The subtree being queried. Matches this path and everything beneath it.
   string project_id = 2;
   // Every team the caller belongs to. A -db service filters
   // visibility == TEAM against this list.
