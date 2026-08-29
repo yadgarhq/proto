@@ -87,7 +87,7 @@ read stream is not evidence a read did not happen.
   "what links here" is a fanout until a decision is made.
 - **Not yet drafted, and now required.** `viz/v1` (`Dashboard`, D44), `profile/v1`
   (namespaced preference blobs, D43), `tag/v1` (`Resolve`, returning canonical forms and
-  marking unknowns `PROPOSED`, D51), and the notice channel of D39/D47 — a claim-and-ack
+  marking unknowns `PROPOSED`, D51), `project/v1` (the registry, D52), and the notice channel of D39/D47 — a claim-and-ack
   shape rather than a read, addressed to `(user, project)`, which every module's write
   path depends on. `config/v1` shrinks to reads only (D43).
 - **Pagination** uses page-token strings; the token format is unspecified.
