@@ -11,15 +11,15 @@ import "yadgar/common/v1/common.proto";
 enum TagStatus {
   TAG_STATUS_UNSPECIFIED = 0;
   // In the vocabulary. Use freely.
-  TAG_STATUS_CANONICAL   = 1;
+  TAG_STATUS_CANONICAL = 1;
   // Matched nothing and was accepted anyway. A D31 curation signal, never a
   // rejection: an agent that cannot express a distinction encodes it in the
   // content instead, where nothing indexes it.
-  TAG_STATUS_PROPOSED    = 2;
+  TAG_STATUS_PROPOSED = 2;
   // Resolves to canonical_urn. A merge rewrites this table, never the records,
   // so it stays reversible.
-  TAG_STATUS_ALIAS       = 3;
-  TAG_STATUS_RETIRED     = 4;
+  TAG_STATUS_ALIAS = 3;
+  TAG_STATUS_RETIRED = 4;
 }
 
 message Tag {
@@ -52,7 +52,9 @@ message ResolveTagsRequest {
   // validating before a write; never the default.
   bool allow_propose = 3;
 }
-message ResolveTagsResponse { repeated ResolvedTag tags = 1; }
+message ResolveTagsResponse {
+  repeated ResolvedTag tags = 1;
+}
 
 message ListTagsRequest {
   yadgar.common.v1.Scope scope = 1;
@@ -72,7 +74,9 @@ message PromoteTagRequest {
   string id = 3;
   uint64 expect_version = 4;
 }
-message PromoteTagResponse { yadgar.common.v1.Meta meta = 1; }
+message PromoteTagResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message AliasTagRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -81,7 +85,9 @@ message AliasTagRequest {
   string canonical_urn = 4;
   uint64 expect_version = 5;
 }
-message AliasTagResponse { yadgar.common.v1.Meta meta = 1; }
+message AliasTagResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message RetireTagRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -89,7 +95,9 @@ message RetireTagRequest {
   string id = 3;
   uint64 expect_version = 4;
 }
-message RetireTagResponse { yadgar.common.v1.Meta meta = 1; }
+message RetireTagResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 service TagDbService {
   rpc ResolveTags(ResolveTagsRequest) returns (ResolveTagsResponse);

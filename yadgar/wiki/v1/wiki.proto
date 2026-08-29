@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package yadgar.wiki.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/field_mask.proto";
+import "yadgar/common/v1/common.proto";
 
 message WikiPage {
   yadgar.common.v1.Meta meta = 1;
@@ -29,7 +29,9 @@ message CreateWikiPageRequest {
   yadgar.common.v1.Scope scope = 2;
   WikiPage page = 3;
 }
-message CreateWikiPageResponse { yadgar.common.v1.Meta meta = 1; }
+message CreateWikiPageResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message UpdateWikiPageRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -39,7 +41,9 @@ message UpdateWikiPageRequest {
   WikiPage page = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateWikiPageResponse { yadgar.common.v1.Meta meta = 1; }
+message UpdateWikiPageResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 // Addressed by URN only. There is no by-name arm: a name is not unique (D42), so
 // a by-name get would have to pick one of several matches. Named entry points are
@@ -48,13 +52,17 @@ message GetWikiPageRequest {
   yadgar.common.v1.Scope scope = 1;
   string id = 2;
 }
-message GetWikiPageResponse { WikiPage page = 1; }
+message GetWikiPageResponse {
+  WikiPage page = 1;
+}
 
 message BatchGetWikiPagesRequest {
   yadgar.common.v1.Scope scope = 1;
   repeated string ids = 2;
 }
-message BatchGetWikiPagesResponse { repeated WikiPage pages = 1; }
+message BatchGetWikiPagesResponse {
+  repeated WikiPage pages = 1;
+}
 
 message DeleteWikiPageRequest {
   yadgar.common.v1.Idempotency idempotency = 1;

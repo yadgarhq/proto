@@ -6,8 +6,8 @@ syntax = "proto3";
 
 package yadgar.viz.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/field_mask.proto";
+import "yadgar/common/v1/common.proto";
 
 message Dashboard {
   yadgar.common.v1.Meta meta = 1;
@@ -33,7 +33,9 @@ message CreateDashboardRequest {
   yadgar.common.v1.Scope scope = 2;
   Dashboard dashboard = 3;
 }
-message CreateDashboardResponse { yadgar.common.v1.Meta meta = 1; }
+message CreateDashboardResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message UpdateDashboardRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -43,19 +45,25 @@ message UpdateDashboardRequest {
   Dashboard dashboard = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateDashboardResponse { yadgar.common.v1.Meta meta = 1; }
+message UpdateDashboardResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message GetDashboardRequest {
   yadgar.common.v1.Scope scope = 1;
   string id = 2;
 }
-message GetDashboardResponse { Dashboard dashboard = 1; }
+message GetDashboardResponse {
+  Dashboard dashboard = 1;
+}
 
 message BatchGetDashboardsRequest {
   yadgar.common.v1.Scope scope = 1;
   repeated string ids = 2;
 }
-message BatchGetDashboardsResponse { repeated Dashboard dashboards = 1; }
+message BatchGetDashboardsResponse {
+  repeated Dashboard dashboards = 1;
+}
 
 // Dashboards COEXIST; they do not resolve (D44). This returns everything the
 // caller can see at every scope — their own, their teams', the org's and the

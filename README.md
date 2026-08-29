@@ -1,12 +1,21 @@
-# Proto draft — the domain model
+# yadgar proto — the shared contract
 
-Status: **DRAFT**. Not ratified. Companion to
-`../architecture-decisions-2026-08-29.md`; every non-obvious choice here cites the
-decision it comes from.
+Under D16 these `.proto` files are **the artifact shared across every module
+repo** — not a Rust crate. `buf breaking` gates them in CI against the previous
+tag, so D15's additive-only rule is enforced structurally rather than by
+discipline.
 
-Under D16 these `.proto` files are the contract shared across module repos —
-the artifact, not a Rust crate. `buf breaking` gates them in CI so D15's
-additive-only rule is enforced structurally rather than by discipline.
+Status: **v1, not ratified.** The shapes are settled enough to build against and
+will change additively; O6 tracks ratification. Every non-obvious choice cites
+the decision it comes from, recorded in
+[`yadgarhq/docs`](https://github.com/yadgarhq/docs) —
+`architecture-decisions-2026-08-29.md`, D1–D58.
+
+## Consuming this
+
+Depend on a tag, never on `main`. One binary serves every live major
+concurrently (D15), and the version is part of the service name
+(`task.v1.TaskDbService`), not a header.
 
 ## What is here
 

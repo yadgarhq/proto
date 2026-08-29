@@ -9,8 +9,8 @@ syntax = "proto3";
 
 package yadgar.queue.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/timestamp.proto";
+import "yadgar/common/v1/common.proto";
 
 enum NoticeKind {
   NOTICE_KIND_UNSPECIFIED = 0;
@@ -89,7 +89,9 @@ message PublishNoticeRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   Notice notice = 2;
 }
-message PublishNoticeResponse { string id = 1; }
+message PublishNoticeResponse {
+  string id = 1;
+}
 
 service QueueDbService {
   rpc ClaimNotices(ClaimNoticesRequest) returns (ClaimNoticesResponse);

@@ -5,13 +5,13 @@ syntax = "proto3";
 
 package yadgar.project.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/timestamp.proto";
+import "yadgar/common/v1/common.proto";
 
 enum ProjectStatus {
   PROJECT_STATUS_UNSPECIFIED = 0;
-  PROJECT_STATUS_ACTIVE      = 1;
-  PROJECT_STATUS_ARCHIVED    = 2;
+  PROJECT_STATUS_ACTIVE = 1;
+  PROJECT_STATUS_ARCHIVED = 2;
 }
 
 message Project {
@@ -40,7 +40,9 @@ message RegisterProjectRequest {
   string path = 3;
   string display_name = 4;
 }
-message RegisterProjectResponse { yadgar.common.v1.Meta meta = 1; }
+message RegisterProjectResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 // THE load-bearing rpc. Every scoped write resolves its candidate path here
 // first. An unregistered path returns its nearest registered ancestor rather
@@ -66,7 +68,9 @@ message GetProjectRequest {
   yadgar.common.v1.Scope scope = 1;
   string path = 2;
 }
-message GetProjectResponse { Project project = 1; }
+message GetProjectResponse {
+  Project project = 1;
+}
 
 message ListProjectsRequest {
   yadgar.common.v1.Scope scope = 1;
@@ -98,7 +102,9 @@ message RenameProjectRequest {
   string to_path = 4;
   uint64 expect_version = 5;
 }
-message RenameProjectResponse { yadgar.common.v1.Meta meta = 1; }
+message RenameProjectResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message ArchiveProjectRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -106,7 +112,9 @@ message ArchiveProjectRequest {
   string path = 3;
   uint64 expect_version = 4;
 }
-message ArchiveProjectResponse { yadgar.common.v1.Meta meta = 1; }
+message ArchiveProjectResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 // Registration is administrative — GitOps or CLI, like configuration (D43).
 // Agents resolve and read; they never mint a partition key.

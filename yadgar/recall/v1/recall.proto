@@ -33,10 +33,10 @@ message SearchRequest {
 // which provider supplied the document.
 enum ScoreKind {
   SCORE_KIND_UNSPECIFIED = 0;
-  SCORE_KIND_COSINE      = 1;
-  SCORE_KIND_BM25        = 2;
-  SCORE_KIND_HYBRID      = 3;
-  SCORE_KIND_GRAPH       = 4;  // PPR / spreading activation
+  SCORE_KIND_COSINE = 1;
+  SCORE_KIND_BM25 = 2;
+  SCORE_KIND_HYBRID = 3;
+  SCORE_KIND_GRAPH = 4; // PPR / spreading activation
 }
 
 message Candidate {

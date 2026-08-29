@@ -5,17 +5,17 @@ syntax = "proto3";
 
 package yadgar.audit.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/timestamp.proto";
+import "yadgar/common/v1/common.proto";
 
 enum Action {
   ACTION_UNSPECIFIED = 0;
-  ACTION_CREATE      = 1;
-  ACTION_UPDATE      = 2;
-  ACTION_DELETE      = 3;
-  ACTION_SHARE       = 4;  // visibility widened
-  ACTION_UNSHARE     = 5;  // visibility narrowed
-  ACTION_READ        = 6;  // read stream only
+  ACTION_CREATE = 1;
+  ACTION_UPDATE = 2;
+  ACTION_DELETE = 3;
+  ACTION_SHARE = 4; // visibility widened
+  ACTION_UNSHARE = 5; // visibility narrowed
+  ACTION_READ = 6; // read stream only
 }
 
 // Written to an outbox table in the SAME transaction as the change it

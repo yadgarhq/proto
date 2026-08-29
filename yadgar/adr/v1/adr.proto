@@ -2,15 +2,15 @@ syntax = "proto3";
 
 package yadgar.adr.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/field_mask.proto";
+import "yadgar/common/v1/common.proto";
 
 enum AdrStatus {
   ADR_STATUS_UNSPECIFIED = 0;
-  ADR_STATUS_PROPOSED    = 1;
-  ADR_STATUS_ACCEPTED    = 2;
-  ADR_STATUS_SUPERSEDED  = 3;
-  ADR_STATUS_REJECTED    = 4;
+  ADR_STATUS_PROPOSED = 1;
+  ADR_STATUS_ACCEPTED = 2;
+  ADR_STATUS_SUPERSEDED = 3;
+  ADR_STATUS_REJECTED = 4;
 }
 
 message Adr {
@@ -37,7 +37,7 @@ message Adr {
 message CreateAdrRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   yadgar.common.v1.Scope scope = 2;
-  Adr adr = 3;  // number assigned by the service
+  Adr adr = 3; // number assigned by the service
 }
 // Returns the envelope plus the assigned number — the two things the caller
 // cannot know. Not the Adr it just sent (D48).
@@ -54,7 +54,9 @@ message UpdateAdrRequest {
   Adr adr = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateAdrResponse { yadgar.common.v1.Meta meta = 1; }
+message UpdateAdrResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message GetAdrRequest {
   yadgar.common.v1.Scope scope = 1;
@@ -63,7 +65,9 @@ message GetAdrRequest {
     uint32 number = 3;
   }
 }
-message GetAdrResponse { Adr adr = 1; }
+message GetAdrResponse {
+  Adr adr = 1;
+}
 
 message ListAdrsRequest {
   yadgar.common.v1.Scope scope = 1;

@@ -27,13 +27,17 @@ message GetPreferenceRequest {
   yadgar.common.v1.Scope scope = 1;
   string namespace = 2;
 }
-message GetPreferenceResponse { Preference preference = 1; }
+message GetPreferenceResponse {
+  Preference preference = 1;
+}
 
 message BatchGetPreferencesRequest {
   yadgar.common.v1.Scope scope = 1;
   repeated string namespaces = 2;
 }
-message BatchGetPreferencesResponse { repeated Preference preferences = 1; }
+message BatchGetPreferencesResponse {
+  repeated Preference preferences = 1;
+}
 
 message SetPreferenceRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -43,7 +47,9 @@ message SetPreferenceRequest {
   // Zero on first write for a namespace.
   uint64 expect_version = 5;
 }
-message SetPreferenceResponse { yadgar.common.v1.Meta meta = 1; }
+message SetPreferenceResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message DeletePreferenceRequest {
   yadgar.common.v1.Idempotency idempotency = 1;

@@ -12,10 +12,10 @@ import "google/protobuf/timestamp.proto";
 
 // Ordered ladder, most restrictive first (D12).
 enum Visibility {
-  VISIBILITY_UNSPECIFIED = 0;  // never persisted; rejected at validation
-  VISIBILITY_PRIVATE     = 1;  // owner_user_id only
-  VISIBILITY_TEAM        = 2;  // members of team_id
-  VISIBILITY_ORG         = 3;  // everyone in the installation
+  VISIBILITY_UNSPECIFIED = 0; // never persisted; rejected at validation
+  VISIBILITY_PRIVATE = 1; // owner_user_id only
+  VISIBILITY_TEAM = 2; // members of team_id
+  VISIBILITY_ORG = 3; // everyone in the installation
 }
 
 // Carried by every user-facing entity (D8, D9, D12, D26).
@@ -70,7 +70,7 @@ message Meta {
   // unconditionally (D26).
   repeated string derived_from = 12;
 
-  reserved 13 to 15;  // envelope growth
+  reserved 13 to 15; // envelope growth
 }
 
 // Caller identity and reach, attested by the gateway from the request's

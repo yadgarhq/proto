@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package yadgar.memory.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "yadgar/common/v1/common.proto";
 
 message Memory {
   yadgar.common.v1.Meta meta = 1;
@@ -30,13 +30,15 @@ message Memory {
 message CreateMemoryRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   yadgar.common.v1.Scope scope = 2;
-  Memory memory = 3;  // meta.id, version, timestamps ignored on input
+  Memory memory = 3; // meta.id, version, timestamps ignored on input
 }
 // The envelope only. The caller sent the content and does not need it echoed;
 // what it cannot know is the assigned id, version and timestamps (D48). Echoing
 // the entity charges an agent client twice for the same bytes, and context is
 // the scarcest thing it has.
-message CreateMemoryResponse { yadgar.common.v1.Meta meta = 1; }
+message CreateMemoryResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message UpdateMemoryRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -48,16 +50,25 @@ message UpdateMemoryRequest {
   Memory memory = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateMemoryResponse { yadgar.common.v1.Meta meta = 1; }
+message UpdateMemoryResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
-message GetMemoryRequest { yadgar.common.v1.Scope scope = 1; string id = 2; }
-message GetMemoryResponse { Memory memory = 1; }
+message GetMemoryRequest {
+  yadgar.common.v1.Scope scope = 1;
+  string id = 2;
+}
+message GetMemoryResponse {
+  Memory memory = 1;
+}
 
 message BatchGetMemoriesRequest {
   yadgar.common.v1.Scope scope = 1;
   repeated string ids = 2;
 }
-message BatchGetMemoriesResponse { repeated Memory memories = 1; }
+message BatchGetMemoriesResponse {
+  repeated Memory memories = 1;
+}
 
 // One verb. Owner-only, soft (D26). No unshare, no remove-from-view, no erase.
 message DeleteMemoryRequest {

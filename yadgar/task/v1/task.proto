@@ -2,16 +2,16 @@ syntax = "proto3";
 
 package yadgar.task.v1;
 
-import "yadgar/common/v1/common.proto";
 import "google/protobuf/field_mask.proto";
+import "yadgar/common/v1/common.proto";
 
 enum TaskStatus {
   TASK_STATUS_UNSPECIFIED = 0;
-  TASK_STATUS_OPEN        = 1;
+  TASK_STATUS_OPEN = 1;
   TASK_STATUS_IN_PROGRESS = 2;
-  TASK_STATUS_BLOCKED     = 3;
-  TASK_STATUS_DONE        = 4;
-  TASK_STATUS_DROPPED     = 5;
+  TASK_STATUS_BLOCKED = 3;
+  TASK_STATUS_DONE = 4;
+  TASK_STATUS_DROPPED = 5;
 }
 
 message Task {
@@ -47,7 +47,9 @@ message UpdateTaskRequest {
   Task task = 5;
   google.protobuf.FieldMask update_mask = 6;
 }
-message UpdateTaskResponse { yadgar.common.v1.Meta meta = 1; }
+message UpdateTaskResponse {
+  yadgar.common.v1.Meta meta = 1;
+}
 
 message GetTaskRequest {
   yadgar.common.v1.Scope scope = 1;
@@ -56,7 +58,9 @@ message GetTaskRequest {
     uint32 number = 3;
   }
 }
-message GetTaskResponse { Task task = 1; }
+message GetTaskResponse {
+  Task task = 1;
+}
 
 message ListTasksRequest {
   yadgar.common.v1.Scope scope = 1;

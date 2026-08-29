@@ -1,0 +1,51 @@
+name: buf
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # buf breaking compares against the previous tag, so the whole history
+          # and every tag must be present.
+          fetch-depth: 0
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.72.0
+
+      - name: lint
+        run: buf lint
+
+      - name: build
+        run: buf build -o /dev/null
+
+      - name: format
+        run: buf format --diff --exit-code
+
+      # D15 makes changes additive-only within a major version, and D16 makes
+      # this gate the reason protobuf was chosen over HTTP/JSON: the rule is
+      # enforced mechanically rather than by discipline, which is what the
+      # monolith already failed at.
+      - name: breaking (against previous tag)
+        run: |
+          PREV=$(git tag --list 'v*' --sort=-v:refname | sed -n '1p')
+          # On a tag push the newest tag is this commit; compare against the one before.
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            PREV=$(git tag --list 'v*' --sort=-v:refname | sed -n '2p')
+          fi
+          if [ -z "$PREV" ]; then
+            echo "No previous tag — nothing to compare against. First release."
+            exit 0
+          fi
+          echo "Comparing against $PREV"
+          buf breaking --against ".git#tag=$PREV"
