@@ -95,6 +95,22 @@ message Scope {
   // to (user_id, project_id) so it survives the instance that caused it and is
   // rectified by whichever instance of that project calls next (D47).
   string instance_id = 4;
+
+  // Minted by the gateway, once, and propagated unchanged through every hop.
+  //
+  // WITHOUT THIS, D67's telemetry cannot be summed. One logical call fans out
+  // gateway -> logic -> -db, each hop emitting its own record, and with no shared
+  // key "bytes returned for this call" counts one call three times. The fields
+  // also mean different things per hop and only one is the user-facing answer:
+  // bytes returned to the caller is a GATEWAY fact, rows read is a -db fact.
+  //
+  // It is also the join key for spans, so a trace and its events correlate
+  // without a second identifier being invented later.
+  //
+  // Distinct from instance_id, which is a SESSION and spans many calls, and from
+  // Idempotency.key, which identifies a WRITE so a retry is not applied twice.
+  // Three identifiers with three lifetimes: session, request, write.
+  string request_id = 5;
 }
 
 // Applied to every mutating RPC (D9). The same key replayed returns the
