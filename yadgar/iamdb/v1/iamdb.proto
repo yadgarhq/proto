@@ -13,11 +13,30 @@ import "yadgar/common/v1/common.proto";
 message User {
   yadgar.common.v1.Meta meta = 1;
 
-  // How an operator names this person — an SSO subject one day, a hand-chosen
-  // handle today. Unique, and NOT the primary key: D8's ids are URNs so that
-  // changing how people are named externally is not a migration.
-  string external_id = 16;
-  string display_name = 17;
+  // DEAD FIELDS. Never set, never read.
+  //
+  // They held the username and display name in plaintext. D72 now requires
+  // personal data to be encrypted at rest, so the real values moved to the
+  // ciphertext fields below. They are not deleted because v1.4.0 published them
+  // and a published tag never moves — `buf breaking` refuses the removal, which
+  // is the gate doing its job rather than an obstacle. Deleting them is a
+  // major-version change whenever one happens for another reason.
+  string external_id = 16 [deprecated = true];
+  string display_name = 17 [deprecated = true];
+
+  // AES-GCM ciphertext, decryptable by `iam` with a key held in a Secret and
+  // never in the database — so a stolen backup decrypts nothing.
+  bytes external_id_ciphertext = 18;
+  bytes display_name_ciphertext = 19;
+
+  // HMAC of the username under a separate key, for equality lookup only.
+  //
+  // Encryption alone would make login impossible: AES-GCM is randomised, so the
+  // same username encrypts differently every time and `WHERE username = ?` can
+  // never match. This is the standard blind-index answer. It leaks equality —
+  // two identical usernames share an index — which is exactly what a lookup key
+  // must leak and nothing more.
+  bytes external_id_blind_index = 20;
 }
 
 message Team {
@@ -64,7 +83,14 @@ message ResolveCredentialResponse {
 // the password here for the store to check — would put a plaintext password in a
 // second service, and eventually in its logs.
 message GetPasswordHashRequest {
-  string username = 1;
+  // DEAD FIELD, superseded by the blind index below. See User's dead fields for
+  // why it stays.
+  string username = 1 [deprecated = true];
+
+  // The blind index, computed by `iam`. The plaintext username never crosses
+  // this boundary — the same rule the token already follows, for the same
+  // reason: it would otherwise reach a query log or a database backup.
+  bytes username_blind_index = 2;
 }
 message GetPasswordHashResponse {
   // Empty means no such user. Callers MUST still perform a dummy verification
@@ -106,8 +132,15 @@ message RevokeCredentialResponse {
 
 message CreateUserRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
-  string external_id = 2;
-  string display_name = 3;
+
+  // DEAD FIELDS, superseded below.
+  string external_id = 2 [deprecated = true];
+  string display_name = 3 [deprecated = true];
+
+  // Encrypted by `iam` before it gets here. This boundary never sees a name.
+  bytes external_id_ciphertext = 4;
+  bytes display_name_ciphertext = 5;
+  bytes external_id_blind_index = 6;
 }
 message CreateUserResponse {
   yadgar.common.v1.Meta meta = 1;
