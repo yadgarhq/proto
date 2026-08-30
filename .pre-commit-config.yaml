@@ -20,17 +20,12 @@ repos:
       - id: check-json
       - id: check-toml
 
-  - repo: local
+  # Shared, from yadgarhq/actions (D62) — this was a near-identical local block
+  # in every repository until the shared definition existed.
+  - repo: https://github.com/yadgarhq/actions
+    rev: v1
     hooks:
-      # Secrets never reach a public repo in the first place. Force-pushing does
-      # NOT scrub GitHub history — PR refs pin every commit and are never
-      # garbage-collected — so a leaked credential means deleting and recreating
-      # the repository. Prevention is the only cheap point in that timeline.
       - id: gitleaks
-        name: Detect secrets and credentials
-        language: system
-        entry: gitleaks git --pre-commit --staged --verbose
-        pass_filenames: false
 
   - repo: https://github.com/bufbuild/buf
     rev: v1.72.0
