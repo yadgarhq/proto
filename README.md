@@ -19,20 +19,20 @@ concurrently (D15), and the version is part of the service name
 
 ## What is here
 
-| Path | Contents |
-|---|---|
-| `yadgar/common/v1` | `Meta`, `Visibility`, `Scope`, `Idempotency` — imported by everything |
-| `yadgar/memory/v1` | `Memory` + `MemoryDbService` — ranked, implements the provider contract |
-| `yadgar/wiki/v1` | `WikiPage` + `WikiDbService` — ranked |
-| `yadgar/adr/v1` | `Adr` + `AdrDbService` — addressed, deliberately no provider |
-| `yadgar/task/v1` | `Task` + `TaskDbService` — addressed |
-| `yadgar/recall/v1` | `RetrievalProviderService` fanout contract + `RecallService` |
-| `yadgar/audit/v1` | `WriteEvent` / `ReadEvent` + `AuditDbService` |
-| `yadgar/project/v1` | `Project` + `ProjectDbService` — hierarchical paths, `ResolveProject` |
-| `yadgar/tag/v1` | `Tag` + `TagDbService` — the canonical vocabulary, `ResolveTags` |
-| `yadgar/profile/v1` | `Preference` + `ProfileDbService` — opaque per-user blobs |
-| `yadgar/viz/v1` | `Dashboard` + `VizDbService` — coexisting, not resolved |
-| `yadgar/queue/v1` | `Notice` + `QueueDbService` — claim-and-ack, addressed to a project |
+| Path                | Contents                                                                |
+| ------------------- | ----------------------------------------------------------------------- |
+| `yadgar/common/v1`  | `Meta`, `Visibility`, `Scope`, `Idempotency` — imported by everything   |
+| `yadgar/memory/v1`  | `Memory` + `MemoryDbService` — ranked, implements the provider contract |
+| `yadgar/wiki/v1`    | `WikiPage` + `WikiDbService` — ranked                                   |
+| `yadgar/adr/v1`     | `Adr` + `AdrDbService` — addressed, deliberately no provider            |
+| `yadgar/task/v1`    | `Task` + `TaskDbService` — addressed                                    |
+| `yadgar/recall/v1`  | `RetrievalProviderService` fanout contract + `RecallService`            |
+| `yadgar/audit/v1`   | `WriteEvent` / `ReadEvent` + `AuditDbService`                           |
+| `yadgar/project/v1` | `Project` + `ProjectDbService` — hierarchical paths, `ResolveProject`   |
+| `yadgar/tag/v1`     | `Tag` + `TagDbService` — the canonical vocabulary, `ResolveTags`        |
+| `yadgar/profile/v1` | `Preference` + `ProfileDbService` — opaque per-user blobs               |
+| `yadgar/viz/v1`     | `Dashboard` + `VizDbService` — coexisting, not resolved                 |
+| `yadgar/queue/v1`   | `Notice` + `QueueDbService` — claim-and-ack, addressed to a project     |
 
 `AgentPrompt`, `Block`, and `Bookmark` follow `yadgar/adr/v1` exactly (addressed,
 no provider). `Entity` / `Relationship` follow `yadgar/memory/v1` (ranked,
