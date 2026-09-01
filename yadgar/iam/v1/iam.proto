@@ -271,10 +271,13 @@ message EnrolmentToken {
 //
 // EVERY ATTEMPT BUT THE NEWEST LEFT AN ORPHAN, which is how they are told
 // apart. A retry repeats the label, so the duplicates differ only in
-// `created_at` — and the credential the person holds is the one from the
-// attempt whose response arrived, which is the last one made. An orphan
-// credential is the price of the person not being locked out, and between the
-// two it is plainly the cheaper.
+// `created_at`, and the credential the person holds is the one from the last
+// attempt made. THAT RULE RESTS ON A RETRY ABANDONING THE ATTEMPT IT REPLACES,
+// which a caller owes as much as it owes the key below: a retry usually follows
+// a TIMEOUT rather than a proven loss, so a predecessor's response arriving late
+// would otherwise leave the client holding the OLDER credential, with the rule
+// inverted and the wrong one revoked. An orphan credential is the price of the
+// person not being locked out, and between the two it is plainly the cheaper.
 message RedeemEnrolmentRequest {
   // The `secret` field of the decoded EnrolmentToken, never the whole blob.
   string secret = 1;
