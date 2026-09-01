@@ -99,6 +99,12 @@ repos:
   # have to pin the buf version a second time to get one, which trades this
   # staleness for another. `sh` and `git` are always there.
   #
+  # IT READS THE NEWEST TAG REACHABLE FROM HEAD, which on the default branch is
+  # the newest tag there is and on a branch cut before a release is not. Such a
+  # branch is asked for the pin IT can see — an older tag, narrowing the gate
+  # rather than widening it. Rebase on the default branch before writing what it
+  # asks for.
+  #
   # NO TAG REACHABLE FROM HEAD — a fresh repository, or a clone deep enough for
   # history and shallow on tags — SKIPS rather than fails. The precommit job
   # checks out at `fetch-depth: 0` precisely because `buf breaking` needs the

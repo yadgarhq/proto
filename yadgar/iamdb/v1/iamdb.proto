@@ -258,6 +258,15 @@ message RedeemEnrolmentRequest {
   // there, and because a fresh Argon2id salt makes two hashes of one password
   // differ — so this boundary cannot compare them.
   //
+  // A KEY REUSED WITH A DIFFERENT `secret_hash` IS REFUSED, with
+  // INVALID_ARGUMENT, and THIS is the boundary that can tell: the hash is
+  // deterministic — a secret is looked up by it — so the one presented now is
+  // comparable with the one this key originally spent. A password is not: a
+  // fresh Argon2id salt makes two hashes of one password differ, which is why
+  // that axis is checked in `iam` and this one is checked here. THE COMPARISON
+  // PRECEDES THE LOOKUP of the presented secret, or the refusal itself reports
+  // whether that secret exists.
+  //
   // THE CREDENTIAL IS NOT COVERED BY THIS KEY. See that same field for why it
   // cannot be.
   yadgar.common.v1.Idempotency idempotency = 1;
@@ -318,6 +327,25 @@ message RevokeCredentialResponse {
   // without a second read. A revocation whose cache event never fires is a
   // credential that keeps working.
   string user_id = 1;
+}
+
+// The read behind yadgar.iam.v1.ListCredentials, and the only RPC on this
+// boundary that returns a `Credential` — that message was declared with the
+// other storage shapes and read by nothing until this arm existed. Its caller
+// exists because a lost redemption response leaves a credential nobody holds;
+// see yadgar.iam.v1.RedeemEnrolment.
+//
+// A ROW WHOSE `revoked_at` IS SET IS OMITTED, so that field is absent on every
+// row this returns. The tombstones stay in the store — D26 keeps "which
+// credential was used" answerable — and are simply not this RPC's answer.
+message ListCredentialsRequest {
+  string user_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+message ListCredentialsResponse {
+  repeated Credential credentials = 1;
+  string next_page_token = 2;
 }
 
 message CreateUserRequest {
@@ -381,6 +409,7 @@ service IamDbService {
   rpc RedeemEnrolment(RedeemEnrolmentRequest) returns (RedeemEnrolmentResponse);
   rpc CreateCredential(CreateCredentialRequest) returns (CreateCredentialResponse);
   rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+  rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc SetUserAdmin(SetUserAdminRequest) returns (SetUserAdminResponse);
   rpc SetRateLimitOverride(SetRateLimitOverrideRequest) returns (SetRateLimitOverrideResponse);
