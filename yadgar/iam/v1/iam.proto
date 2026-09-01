@@ -235,7 +235,7 @@ message EnrolmentToken {
 // spends the secret and mints the credential, so a lost RESPONSE leaves the
 // person holding a password they chose, a spent secret, no credential, and NO
 // USERNAME. A bare retry answers UNAUTHENTICATED (spent), LoginRequest.username
-// is required, and they cannot log in: the same permanent lockout the single
+// is required, and they cannot log in unaided: the same lockout the single
 // transaction in yadgar.iamdb.v1.RedeemEnrolment exists to prevent, moved one
 // seam later. The key closes that for the TWO LOSSES A RETRY LOOP CAN REACH —
 // a dropped connection, and `iam` dying after the iam-db transaction has
@@ -243,18 +243,44 @@ message EnrolmentToken {
 // already holds and the store answers with the first attempt's outcome. That
 // costs the caller nothing beyond reusing one value it made.
 //
-// A CLIENT THAT DIES BEFORE IT HOLDS A CREDENTIAL IS LOCKED OUT, AND THAT
-// OUTCOME IS ACCEPTED. A key held in memory dies with the process that made it,
-// so a restarted client mints a fresh one, the store sees a new presentation of
-// a spent secret, and the enrolment is spent for nothing. The recovery is a
-// FRESH ENROLMENT FROM AN ADMIN (see IssueEnrolment): one more out-of-band
-// hand-over, for a case that needs a process to die inside one unauthenticated
-// call. THIS IS NOT A DEFECT AWAITING A FIX. Covering it means an obligation on
-// every client ever written — write the key to disk before the first attempt,
-// delete it once any response arrives — which is a rule that can be silently
-// got wrong, and got wrong it leaves a stale key on a machine where a LATER
-// enrolment can present it. A rare lockout with a named recovery is the better
-// trade against a hazard nobody can see.
+// A CLIENT THAT DIES WITHOUT DURABLY HOLDING A CREDENTIAL IS LOCKED OUT IF ITS
+// ATTEMPT COMMITTED, AND THAT OUTCOME IS ACCEPTED. What decides it is WHETHER
+// yadgar.iamdb.v1.RedeemEnrolment committed, not when the death fell relative
+// to that commit: those are two events on two machines, a client whose request
+// was in flight cannot know which side it landed on, and nothing here obliges
+// the store to abandon a redemption whose caller has gone away. If the attempt
+// did NOT commit, the secret is unspent, the person still holds the token out
+// of band until it expires (D73), and a restarted client redeems it normally.
+// If it DID, a key held in memory dies with the process that made it, so a
+// restarted client mints a fresh one, the store sees a new presentation of a
+// SPENT secret, and that RETRY achieves nothing. A client that dies after
+// receiving its response and before writing the credential down is in that
+// second case as well: it held a credential and no longer does. A client that
+// cannot tell which case it is in takes the check below.
+//
+// A LOGIN THAT SUCCEEDS MEANS THE PERSON IS IN, and needs no fresh enrolment.
+// The store's own view is closed — no RPC on this service or on
+// yadgar.iamdb.v1.IamDbService returns an `Enrolment` or its `spent_at` — and
+// ListCredentials shows only an attempt that got as far as minting, staying
+// silent on one that committed without it. But the admin named the person in
+// CreateUserRequest.external_id, and that IS the username — what a lost
+// response takes away — so an admin can say it back to them and let them try. A
+// Login that FAILS does not tell which case it was, because a misremembered
+// password fails the same way. So the admin acts on the person's word and mints
+// a FRESH ENROLMENT (see IssueEnrolment): one more out-of-band hand-over, for a
+// case that needs a process to die in the narrow window before it durably holds
+// a credential. Guessing wrong costs one unnecessary enrolment, which is why
+// this is stated rather than answered with a field.
+//
+// THIS IS NOT A DEFECT AWAITING A FIX. Covering it means an obligation on every
+// client ever written — write the key to disk before the first attempt, delete
+// it once any response arrives — and that is a rule which can be silently got
+// wrong. Got wrong, it leaves a stale key on a machine, and a LATER enrolment
+// there presents that key with a DIFFERENT `secret`: REFUSED with
+// INVALID_ARGUMENT by the rule below, which bounds the damage to a refusal the
+// client author then has to diagnose rather than a wrong outcome that stands. A
+// rare lockout with a named recovery is the better trade against a rule every
+// future client author must find and honour.
 //
 // WHAT A RETRY REPLAYS, AND WHAT IT MINTS AFRESH. `iam` keeps nothing: it
 // passes the key to yadgar.iamdb.v1.RedeemEnrolment, whose store deduplicates
@@ -284,8 +310,9 @@ message EnrolmentToken {
 // which a caller owes as much as it owes the key below: a retry usually follows
 // a TIMEOUT rather than a proven loss, so a predecessor's response arriving late
 // would otherwise leave the client holding the OLDER credential, with the rule
-// inverted and the wrong one revoked. An orphan credential is the price of the
-// person not being locked out, and between the two it is plainly the cheaper.
+// inverted and the wrong one revoked. An orphan credential is the price of a
+// retry that is still running not locking the person out, and between the two
+// it is plainly the cheaper.
 message RedeemEnrolmentRequest {
   // The `secret` field of the decoded EnrolmentToken, never the whole blob.
   string secret = 1;
@@ -314,11 +341,16 @@ message RedeemEnrolmentRequest {
   // retry guarantees is the outcome that matters — a working credential and the
   // username to use it with — at the cost of the orphan named there.
   //
-  // HELD IN MEMORY, AND THE CALLER OWES NOTHING BEYOND THE RULE BELOW. A retry
-  // loop still holds the key it made, which is the whole of what covers the two
-  // losses named above the message. IT IS NOT WRITTEN TO DISK: a key that
-  // outlives its process would also cover a dying client, and that lockout is
-  // accepted instead, for the reason stated there.
+  // HELD IN MEMORY, AND FOR THE KEY ITSELF THE CALLER OWES NOTHING BEYOND
+  // GENERATING ONE PER ATTEMPT AND REUSING IT ON RETRY — the rule stated in
+  // full at the end of this field. A retry loop still holds the key it made,
+  // which is the whole of what covers the two losses named above the message.
+  // IT IS NOT WRITTEN TO DISK: a key that outlives its process would also cover
+  // a dying client, and that lockout is accepted instead, for the reason stated
+  // there. A client that writes it anyway is outside this contract, and owes
+  // what that obligation owed: delete the key once any response arrives,
+  // because a key left behind is one a later enrolment on that machine can
+  // present.
   //
   // A KEY REUSED WITH A DIFFERENT PASSWORD IS REFUSED, with INVALID_ARGUMENT,
   // rather than answered with the first attempt's outcome. The store's replay
@@ -331,10 +363,9 @@ message RedeemEnrolmentRequest {
   // which is the comparison Login makes on every call. This is D9's rule as it
   // lands here: a repeated key carrying a DIFFERENT payload is REFUSED rather
   // than replayed. D9 originally said only that a repeated key is a replay and
-  // was silent on the differing case; proto#9 stated it for this RPC, where it
-  // was found, and D9 is now amended to say it org-wide. The way out is a fresh
-  // enrolment (see IssueEnrolment) — the spent secret cannot be presented again
-  // under any key.
+  // was silent on the differing case; it was found here, on this RPC, and D9 is
+  // now amended to say it org-wide. The way out is a fresh enrolment (see
+  // IssueEnrolment) — the spent secret cannot be presented again under any key.
   //
   // A KEY REUSED WITH A DIFFERENT `secret` IS REFUSED TOO, and THAT check runs
   // in the store rather than here. `secret_hash` is deterministic — the store
@@ -485,9 +516,9 @@ message ListCredentialsResponse {
 // in this contract sets a password on an account that already has one. A fresh
 // enrolment for an EXISTING user, redeemed, sets the password unconditionally.
 // That is the recovery for a forgotten password, and it is the recovery of last
-// resort for a redemption whose response was lost. D73 puts rotation POLICY
-// outside the first cut; it does not leave the deployment without a way back
-// in, and this is the way.
+// resort for a redemption that spent its secret without leaving the person a
+// credential they can use. D73 puts rotation POLICY outside the first cut; it
+// does not leave the deployment without a way back in, and this is the way.
 //
 // THE RESIDUAL, STATED RATHER THAN LEFT TO BE NOTICED: an admin can mint an
 // enrolment for any existing user at any time and redeem it themselves. D73's
