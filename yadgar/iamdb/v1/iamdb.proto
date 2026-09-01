@@ -7,9 +7,22 @@
 // THIS FILE IMPORTS `yadgar/telemetry/v1` for the same reason yadgar/iam/v1
 // does, and with the same reservation: D74 keys a rate limit on D67's `Kind`
 // rather than on a second taxonomy, and `buf breaking`'s FILE rule means that
-// enum cannot be moved into common.proto. The rate-limit messages themselves
-// are declared HERE as well as in yadgar/iam/v1 and are not shared, which is
-// the same constraint this file's neighbours already live with.
+// enum cannot be moved into common.proto.
+//
+// `RateLimit` AND `RateLimitOverride` ARE DECLARED HERE AS WELL AS IN
+// yadgar/iam/v1, AND THE REASON IS DIRECTIONAL LAYERING rather than any lint
+// rule. The storage boundary sits below the logic one (D4), so importing
+// yadgar/iam/v1 here would make the store depend on the API it serves — which
+// is a different constraint from the one the neighbouring files live with,
+// where `buf lint` refuses to let two RPCs share a request or response type.
+//
+// Lifting the pair into common.proto is not available either:
+// `RateLimitOverride` embeds `yadgar.telemetry.v1.Kind`, and common.proto
+// importing telemetry would invert the base file's own layering. `RateLimit`
+// alone could be born there — it is two scalars and it is new — and
+// deliberately is not. common.proto carries what EVERY module carries: the
+// envelope, the scope, the idempotency key. Splitting one concept across two
+// files, permanently at the next tag (D15, D16), is the worse trade of the two.
 syntax = "proto3";
 
 package yadgar.iamdb.v1;
@@ -229,12 +242,24 @@ enum RedeemOutcome {
 // boundary is drawn where the failure is recoverable; the key is what makes it
 // recoverable.
 message RedeemEnrolmentRequest {
-  // `iam` passes its OWN caller's key through unchanged, so one key covers the
-  // whole redemption — this transaction and the credential minted after it.
-  // A replay returns the ORIGINAL outcome, REDEEM_OUTCOME_REDEEMED with the
-  // same user_id, rather than REDEEM_OUTCOME_SPENT: a retry of one attempt is
-  // not a second presentation of the secret, and reporting it as one is what
-  // locks the person out. See yadgar.iam.v1.RedeemEnrolmentRequest.idempotency.
+  // `iam` passes its OWN caller's key through unchanged, so a retry of one
+  // attempt reaches this transaction as the same write rather than as a second
+  // presentation of the secret. A replay returns the ORIGINAL outcome —
+  // REDEEM_OUTCOME_REDEEMED, with the same user_id, enrolment_id and
+  // external_id_ciphertext — rather than REDEEM_OUTCOME_SPENT, and reporting it
+  // as spent is what locks the person out.
+  //
+  // A REPLAY DOES NOT RE-APPLY THE PASSWORD. `argon2id_hash` below is ignored
+  // on one, so the password the first attempt set is the password that stands.
+  // That is why yadgar.iam.v1.RedeemEnrolmentRequest.idempotency refuses a key
+  // reused with a DIFFERENT password rather than passing it here: the caller
+  // would otherwise be told the change took effect while the first one stayed
+  // live. The check belongs at that boundary because the plaintext exists only
+  // there, and because a fresh Argon2id salt makes two hashes of one password
+  // differ — so this boundary cannot compare them.
+  //
+  // THE CREDENTIAL IS NOT COVERED BY THIS KEY. See that same field for why it
+  // cannot be.
   yadgar.common.v1.Idempotency idempotency = 1;
   // The HASH, computed by `iam`.
   bytes secret_hash = 2;
@@ -248,6 +273,29 @@ message RedeemEnrolmentResponse {
   // error.
   string user_id = 2;
   string enrolment_id = 3;
+
+  // The redeeming user's encrypted username, read in the SAME transaction.
+  //
+  // WITHOUT IT A REPLAY CANNOT ANSWER, and that is the whole of what makes
+  // yadgar.iam.v1.RedeemEnrolment retry-safe. That response carries the
+  // username — a person enrolling on their first machine has no other way to
+  // learn it — and `iam` holds no store to have remembered it in (D4), so the
+  // only place a retry can recover it is here. Nothing else on this boundary
+  // can hand it over: no RPC returns a `User`, `GetPasswordHash` answers a
+  // blind index with a hash, and `external_id_blind_index` is one-way by
+  // construction. This field is that one lookup, narrowed to the one caller
+  // that needs it.
+  //
+  // CIPHERTEXT, NEVER THE NAME. This boundary sees no plaintext name in either
+  // direction (D72): `CreateUser` receives one already encrypted, and the key
+  // lives in a Secret `iam` holds rather than in the database. Returning a
+  // plaintext username here would make this the single RPC that breaks that
+  // rule, and would need the store to hold the key in order to break it.
+  // `iam` decrypts this exactly as it encrypted it.
+  //
+  // Set only when outcome is REDEEM_OUTCOME_REDEEMED. Empty otherwise, and
+  // empty is not an error — the same rule `user_id` above carries.
+  bytes external_id_ciphertext = 4;
 }
 
 message CreateCredentialRequest {

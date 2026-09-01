@@ -197,13 +197,12 @@ message EnrolmentToken {
   // token — the mechanism exists for development and private deployments — so
   // absence is modelled, not treated as an error.
   //
-  // PRESENT AND EMPTY IS NEITHER, and it is REFUSED. Absence is the whole of
-  // "use system trust", so an empty string is a token that was assembled wrong
-  // rather than a deployment without a CA. Worth saying because
-  // `enrolment-token-design.md`'s field table spells this field "or empty": a
-  // client written from that document tests is_empty() and one written from
-  // this file tests presence, and the two then disagree on precisely the state
-  // neither of them defines. This file defines it.
+  // PRESENT AND EMPTY IS NEITHER, and it is REFUSED: the client refuses the
+  // token and names the field, exactly as it does for an empty `gateway`.
+  // Absence is the whole of "use system trust", so an empty string is a token
+  // that was assembled wrong rather than a deployment without a CA.
+  // `enrolment-token-design.md` states the same rule, so a client written from
+  // that document and one written from this file behave identically.
   optional string ca_pem = 3;
 
   // D73's 24 hours, stated rather than implied, so a client can say why an
@@ -242,6 +241,23 @@ message EnrolmentToken {
 // prevent, moved one seam later. The other recovery is a fresh enrolment (see
 // IssueEnrolment), which is a second out-of-band hand-over for a failure that
 // need not happen.
+//
+// WHAT A RETRY REPLAYS, AND WHAT IT MINTS AFRESH. `iam` keeps nothing: it
+// passes the key to yadgar.iamdb.v1.RedeemEnrolment, whose store deduplicates
+// it (D9) and answers with the original outcome AND the redeeming user's
+// encrypted username. So the username is RE-READ from the store on every
+// attempt rather than remembered — which is the only shape available, because a
+// logic service holds no store at all (D4). THE CREDENTIAL IS DIFFERENT: the
+// token is shown once and kept as a hash (D72), so no replay can return the
+// first one, and a store able to hand its own tokens back is the risk
+// IssueCredentialResponse below refuses outright. A retry therefore mints a
+// FRESH credential under its own key.
+//
+// THE RESIDUAL, STATED RATHER THAN LEFT TO BE NOTICED: a lost response leaves
+// one credential nobody holds. It is live until it is revoked, it carries the
+// label its attempt gave it, and it belongs to a user who can list and revoke
+// it. An orphan credential is the price of the person not being locked out,
+// and between the two it is plainly the cheaper.
 message RedeemEnrolmentRequest {
   // The `secret` field of the decoded EnrolmentToken, never the whole blob.
   string secret = 1;
@@ -254,14 +270,34 @@ message RedeemEnrolmentRequest {
   // this call returns is the person's first, and it needs a name like any other.
   string label = 3;
 
-  // Retries of ONE redemption attempt, and what makes this RPC retry-safe. The
-  // mint IS the operation, exactly as it is in IssueEnrolment, so a replay
-  // returning the SAME token, credential_id and username is correct idempotent
-  // behaviour rather than a second credential minted from a single-use secret.
-  // `iam` caches the RESPONSE WHOLE against this key — the username above all,
-  // because without it the person cannot call Login at all — and passes the key
-  // through to yadgar.iamdb.v1.RedeemEnrolmentRequest, so ONE key covers both
-  // halves and the store is never asked to spend one secret twice.
+  // Retries of ONE redemption attempt, and what makes this RPC retry-safe.
+  //
+  // PASSED THROUGH, NOT CACHED. `iam` hands this key to
+  // yadgar.iamdb.v1.RedeemEnrolmentRequest unchanged and stores nothing against
+  // it, because D9 puts the deduplication in the owning module's store and D4
+  // leaves `iam` without one. The store is therefore never asked to spend one
+  // secret twice, and a retry recovers the username by decrypting what that
+  // store returns — not from a cached response, which there is nowhere to keep.
+  //
+  // A RETRY IS NOT FIELD-FOR-FIELD THE FIRST ANSWER, and cannot be. `token` and
+  // `credential_id` are new on every attempt, for the reason stated above the
+  // message: the first token was shown once and only its hash survives. What a
+  // retry guarantees is the outcome that matters — a working credential and the
+  // username to use it with — at the cost of the orphan named there.
+  //
+  // A KEY REUSED WITH A DIFFERENT PASSWORD IS REFUSED, with INVALID_ARGUMENT,
+  // rather than answered with the first attempt's outcome. The store's replay
+  // does not re-apply the password, so a client that re-prompts and retries
+  // transparently would otherwise leave the FIRST password live while the
+  // person believes the second took effect — the mirror image of the
+  // secret-derived key rejected just below, and wrong for the same reason.
+  // `iam` tells the two apart without remembering anything: on a replay it
+  // verifies the presented password against the hash the store already holds,
+  // which is the comparison Login makes on every call. D9 says a repeated key
+  // is a replay rather than a failure, and it is silent on a repeated key
+  // carrying a DIFFERENT request; this states the case for this RPC, where it
+  // was found. The way out is a fresh enrolment (see IssueEnrolment) — the
+  // spent secret cannot be presented again under any key.
   //
   // GENERATED BY THE CALLER, ONCE PER ATTEMPT, AND REUSED ON RETRY. Deriving it
   // from the secret is the obvious shortcut and it is wrong: a person who
