@@ -286,9 +286,10 @@ message RedeemEnrolmentResponse {
   // The redeeming user's encrypted username, read in the SAME transaction.
   //
   // WITHOUT IT A REPLAY CANNOT ANSWER, and that is the whole of what makes
-  // yadgar.iam.v1.RedeemEnrolment retry-safe. That response carries the
-  // username — a person enrolling on their first machine has no other way to
-  // learn it — and `iam` holds no store to have remembered it in (D4), so the
+  // yadgar.iam.v1.RedeemEnrolment retry-safe within one process — the limit
+  // that RPC states, and the limit this field inherits. That response carries
+  // the username — a person enrolling on their first machine has no other way
+  // to learn it — and `iam` holds no store to have remembered it in (D4), so the
   // only place a retry can recover it is here. Nothing else on this boundary
   // can hand it over: no RPC returns a `User`, `GetPasswordHash` answers a
   // blind index with a hash, and `external_id_blind_index` is one-way by
