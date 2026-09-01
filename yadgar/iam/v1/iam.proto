@@ -233,13 +233,16 @@ message RevokeCredentialResponse {}
 
 // Mint the enrolment an admin hands to a person (D73).
 //
-// SEPARATE FROM CreateUser, though the two are normally called together, and
-// the second reason is the one that decides it. Creation happens once while an
-// enrolment can outlive its usefulness in 24 hours; and CreateUserRequest
-// carries Idempotency, so a replay must return the original outcome — which for
-// a combined RPC means handing back a single-use secret a second time, or
-// quietly handing back a different one. IssueCredential is the existing
-// precedent for a secret-returning RPC of its own.
+// SEPARATE FROM CreateUser, though the two are normally called together.
+//
+// An account is created once and an enrolment expires in 24 hours, so a
+// combined RPC would give an admin no way to ask for a fresh enrolment without
+// also asking for another account. One idempotency key would then cover two
+// acts with two lifetimes: replaying it must return the original outcome, and
+// the original outcome of "create this account" is not a single-use secret to
+// be handed over again. Here the mint IS the operation, so a replay returning
+// the same token is correct idempotent behaviour — which is exactly why
+// IssueCredential is already shaped this way.
 //
 // D73 puts token RESEND outside the first cut: handing the same secret over
 // again, which this store cannot do in any case because it keeps only a hash.
