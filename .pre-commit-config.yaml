@@ -51,11 +51,33 @@ repos:
       # CI. Local git, so it costs nothing — and a break caught here never
       # reaches a branch someone else has pulled.
       #
-      # Pinned to the FIRST tag of the major, not the latest, and that is
-      # deliberate: D15 says a change is additive-only *within a major*, so v1
-      # must stay compatible with v1.0.0 forever — not merely with whatever
-      # shipped last. Comparing against the latest tag would let the contract
-      # drift away from v1.0.0 one compatible step at a time. Bump this only
-      # when a v2 exists, to that major's first tag.
+      # TWO INVOCATIONS, AND NEITHER ONE IS THE GATE ON ITS OWN. This was one
+      # hook, against v1.0.0 only, and that half was silently vacuous for every
+      # file added after the first tag.
+      #
+      #   v1.0.0 — the major's first tag (D15). A change is additive-only
+      #     *within a major*, so v1 must stay compatible with v1.0.0 forever,
+      #     not merely with whatever shipped last. Comparing against the latest
+      #     tag alone would let the contract drift away from v1.0.0 one
+      #     compatible step at a time. Bump this only when a v2 exists, to that
+      #     major's first tag.
+      #
+      #   the previous tag — D16, verbatim: "`buf breaking` runs in CI against
+      #     the previous tag and rejects any breaking change." v1.0.0 contains
+      #     NONE of iam, iamdb, telemetry, ask or taskapi, so for those five
+      #     files the first-tag comparison has nothing to compare against and
+      #     passes on an empty set. A renumbered field in any of them exits 0
+      #     against v1.0.0 and 100 against v1.5.0 — verified by injecting one.
+      #
+      # BUMP THE SECOND ONE AT EVERY RELEASE. A stale pin is not merely
+      # conservative: it still compares the files that existed at that tag, but
+      # anything added AFTER it and then broken slips through — which is the
+      # exact class this second invocation exists to catch.
       - id: buf-breaking
+        alias: buf-breaking-major
+        name: buf breaking (v1.0.0, the major's first tag)
         args: [--against, .git#tag=v1.0.0]
+      - id: buf-breaking
+        alias: buf-breaking-previous
+        name: buf breaking (v1.5.0, the previous tag)
+        args: [--against, .git#tag=v1.5.0]

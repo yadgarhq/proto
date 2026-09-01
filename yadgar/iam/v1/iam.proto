@@ -88,16 +88,25 @@ message ResolveCredentialResponse {
   // gateway merges it over its own defaults. That merge is what "effective"
   // means, and it still costs one lookup, which is the property D74 is after.
   //
-  // THREE CASES, ALL MEANINGFUL AND ALL DIFFERENT:
-  //   - empty list                  this user has no override at all; every
-  //                                 configured default applies unmodified.
-  //   - bucket absent from the list no override for that bucket; its default
-  //                                 applies.
-  //   - present, rate and burst 0   that bucket is denied for this user, and
-  //                                 the zero is deliberate.
-  // An empty list is therefore NOT "deny everything" — which is exactly the
-  // reading a zero-valued scalar default would have invited, and the reason
-  // absence is modelled as absence.
+  // TWO ABSENCES THAT SAY THE SAME THING, AND ONE PRESENCE THAT DOES NOT.
+  // An empty list and a bucket missing from a non-empty list are ONE case, not
+  // two: there is no override for that bucket, so its configured default
+  // applies unmodified. An empty list is therefore NOT "deny everything" —
+  // which is exactly the reading a zero-valued scalar default would have
+  // invited, and the reason absence is modelled as absence.
+  //
+  // What is distinct is the presence:
+  //   - entry present, rate and burst 0   that bucket is DENIED for this user,
+  //                                       and the zero is deliberate.
+  //   - entry present, any other values   that bucket uses them in place of
+  //                                       its default.
+  //
+  // `limit` IS ALWAYS SET ON AN ENTRY IN THIS RESPONSE. An unset `limit` is
+  // how SetRateLimitOverrideRequest CLEARS an override, and a cleared override
+  // is one that no longer exists — so it leaves the list rather than remaining
+  // in it with nothing in it. A caller that receives an entry with `limit`
+  // unset has met a server bug, and must read it as no override for that
+  // bucket rather than as a denial.
   repeated RateLimitOverride rate_limit_overrides = 5;
 }
 
@@ -144,9 +153,40 @@ message LoginResponse {
 // channel is already trusted, so the anchor travels on it.
 message EnrolmentToken {
   // The single-use enrolment secret, presented to RedeemEnrolment below.
+  //
+  // AT LEAST 256 BITS (32 BYTES) FROM A CSPRNG, base64-encoded. Stated for the
+  // same reason the alphabet above is stated: RedeemEnrolment is
+  // unauthenticated by construction, so this secret IS the whole
+  // authenticator, and its entropy is the single property that decides whether
+  // that endpoint is brute-forceable. Everything else here is pinned down —
+  // the alphabet and its RFC section, Argon2id, the constant-work rule — and
+  // leaving this one to the implementer would leave the one that matters most.
+  //
+  // NEVER EMPTY IN A MINTED TOKEN, and a client that decodes one where it is
+  // empty refuses the token and names the field. See `gateway` below for why
+  // the rule is written for the client rather than only for the server.
+  //
+  // D74's BUCKETS CANNOT LIMIT REDEMPTION ATTEMPTS, which is why the entropy
+  // carries so much. They key on (user, module, kind), and a redemption has no
+  // user until it succeeds — so the architecture's own capacity control
+  // structurally cannot key on this call. `Login` shares that, but a login
+  // names a user behind a known username and lockout is the obvious answer;
+  // here the secret is the whole authenticator and there is no account to lock
+  // out. The gateway limits this path BY SOURCE ADDRESS instead.
   string secret = 1;
 
   // The gateway's address, so nobody types it and nobody types it wrong.
+  //
+  // NEVER EMPTY IN A MINTED TOKEN, and a client that decodes one where it is
+  // empty REFUSES the token and says which field was empty. The field has no
+  // presence, so a misconfigured `iam` cannot fail while minting: it produces a
+  // structurally valid token that points at nothing. `iam` fills this and
+  // `ca_pem` from its own configuration, which couples a service deliberately
+  // unreachable from outside to D71's edge PKI — and without this rule the
+  // misconfiguration surfaces on a stranger's machine, on their first contact
+  // with the deployment, as an undiagnosable TLS error. A rule the server
+  // follows does not help the client that already holds a bad token; both
+  // halves have to be written down.
   string gateway = 2;
 
   // PEM of the root CA. The client trusts it for yadgar's connections and for
@@ -156,6 +196,14 @@ message EnrolmentToken {
   // trust applies. That is a legitimate deployment rather than a malformed
   // token — the mechanism exists for development and private deployments — so
   // absence is modelled, not treated as an error.
+  //
+  // PRESENT AND EMPTY IS NEITHER, and it is REFUSED. Absence is the whole of
+  // "use system trust", so an empty string is a token that was assembled wrong
+  // rather than a deployment without a CA. Worth saying because
+  // `enrolment-token-design.md`'s field table spells this field "or empty": a
+  // client written from that document tests is_empty() and one written from
+  // this file tests presence, and the two then disagree on precisely the state
+  // neither of them defines. This file defines it.
   optional string ca_pem = 3;
 
   // D73's 24 hours, stated rather than implied, so a client can say why an
@@ -177,6 +225,23 @@ message EnrolmentToken {
 //     paid for its Argon2id hashing, or the response time restores exactly the
 //     distinction the status code just removed. This is the rule
 //     yadgar.iamdb.v1.GetPasswordHashResponse already states for passwords.
+//   - VALIDATION BEFORE LOOKUP. Every check that does not need the secret —
+//     password policy, label — runs FIRST. Otherwise INVALID_ARGUMENT comes
+//     back only once the secret has been confirmed, and the status code itself
+//     says the secret was good: an oracle cleaner than timing, and one that
+//     constant work does not touch. Either this order, or UNAUTHENTICATED for
+//     every failure. Constant work closes timing, not status codes.
+//
+// RETRY-SAFE ONLY BECAUSE OF `idempotency` BELOW. Redemption spends the secret
+// and mints the credential, so a lost RESPONSE — a dropped connection, `iam`
+// dying after the iam-db transaction has committed, the client itself dying —
+// leaves the person holding a password they chose, a spent secret, no
+// credential, and NO USERNAME. A bare retry answers UNAUTHENTICATED (spent),
+// LoginRequest.username is required, and they cannot log in: the same permanent
+// lockout the single transaction in yadgar.iamdb.v1.RedeemEnrolment exists to
+// prevent, moved one seam later. The other recovery is a fresh enrolment (see
+// IssueEnrolment), which is a second out-of-band hand-over for a failure that
+// need not happen.
 message RedeemEnrolmentRequest {
   // The `secret` field of the decoded EnrolmentToken, never the whole blob.
   string secret = 1;
@@ -188,6 +253,27 @@ message RedeemEnrolmentRequest {
   // Free text naming the machine, exactly as LoginRequest.label. The credential
   // this call returns is the person's first, and it needs a name like any other.
   string label = 3;
+
+  // Retries of ONE redemption attempt, and what makes this RPC retry-safe. The
+  // mint IS the operation, exactly as it is in IssueEnrolment, so a replay
+  // returning the SAME token, credential_id and username is correct idempotent
+  // behaviour rather than a second credential minted from a single-use secret.
+  // `iam` caches the RESPONSE WHOLE against this key — the username above all,
+  // because without it the person cannot call Login at all — and passes the key
+  // through to yadgar.iamdb.v1.RedeemEnrolmentRequest, so ONE key covers both
+  // halves and the store is never asked to spend one secret twice.
+  //
+  // GENERATED BY THE CALLER, ONCE PER ATTEMPT, AND REUSED ON RETRY. Deriving it
+  // from the secret is the obvious shortcut and it is wrong: a person who
+  // mistypes their password and retries with a different one would be handed,
+  // silently, the credential for the password they did not want. A fresh key
+  // per retry is the opposite failure — idempotency that never matches does
+  // nothing at all.
+  //
+  // NUMBERED 4, where every other Idempotency in this file is 1. The three
+  // fields above were numbered before this one existed, and moving them is
+  // worth less than this change staying one in which nothing was renumbered.
+  yadgar.common.v1.Idempotency idempotency = 4;
 }
 message RedeemEnrolmentResponse {
   // Shown once (D72). Issued here rather than by a follow-up Login, so the
@@ -249,6 +335,24 @@ message RevokeCredentialResponse {}
 // Minting a FRESH enrolment is a different act, and it is this one. Whether an
 // admin may mint one for a user who already holds a live enrolment is service
 // policy, not contract shape.
+//
+// THIS IS ALSO THE ONLY RESET PATH, and it is named here because nothing else
+// in this contract sets a password on an account that already has one. A fresh
+// enrolment for an EXISTING user, redeemed, sets the password unconditionally.
+// That is the recovery for a forgotten password, and it is the recovery of last
+// resort for a redemption whose response was lost. D73 puts rotation POLICY
+// outside the first cut; it does not leave the deployment without a way back
+// in, and this is the way.
+//
+// THE RESIDUAL, STATED RATHER THAN LEFT TO BE NOTICED: an admin can mint an
+// enrolment for any existing user at any time and redeem it themselves. D73's
+// literal guarantee survives — the admin still never learns the password
+// anyone chose — but its RATIONALE, that an audit trail cannot otherwise tell
+// the person from the administrator who onboarded them, is MITIGATED RATHER
+// THAN ELIMINATED. The issuance is recorded and the victim's old password stops
+// working, so the act is LOUD rather than silent. That is a real improvement on
+// admin-sets-initial-password and it is why this shape stands; it is not the
+// same thing as the property being gone.
 message IssueEnrolmentRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   string user_id = 2;

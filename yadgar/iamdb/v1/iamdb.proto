@@ -105,6 +105,10 @@ message RateLimitOverride {
   // D67's Kind. KIND_JOB and KIND_UNSPECIFIED are never stored here — D74 puts
   // system-initiated work outside this mechanism.
   yadgar.telemetry.v1.Kind kind = 2;
+  // Always set on a stored override. Clearing an override DELETES the row
+  // rather than storing one with no limit in it, so this is never absent on
+  // the way out — the same rule yadgar.iam.v1.ResolveCredentialResponse states
+  // for the list it builds from these.
   RateLimit limit = 3;
 }
 
@@ -216,10 +220,21 @@ enum RedeemOutcome {
 // enrolment, and the deadline is already stored.
 //
 // Credential creation stays a SEPARATE call, deliberately. A crash after this
-// one leaves the person with the password they chose and no credential, which
-// they recover by logging in — so the boundary is drawn where the failure is
+// one leaves the person with the password they chose and no credential — and
+// NOT, as it first reads, a person who simply logs in again.
+// yadgar.iam.v1.LoginRequest requires a username, and the username reaches the
+// person in yadgar.iam.v1.RedeemEnrolmentResponse: the answer that was lost is
+// the one carrying it. What makes this boundary safe is the idempotency key
+// below, replaying the whole outcome instead of finding the secret spent. The
+// boundary is drawn where the failure is recoverable; the key is what makes it
 // recoverable.
 message RedeemEnrolmentRequest {
+  // `iam` passes its OWN caller's key through unchanged, so one key covers the
+  // whole redemption — this transaction and the credential minted after it.
+  // A replay returns the ORIGINAL outcome, REDEEM_OUTCOME_REDEEMED with the
+  // same user_id, rather than REDEEM_OUTCOME_SPENT: a retry of one attempt is
+  // not a second presentation of the secret, and reporting it as one is what
+  // locks the person out. See yadgar.iam.v1.RedeemEnrolmentRequest.idempotency.
   yadgar.common.v1.Idempotency idempotency = 1;
   // The HASH, computed by `iam`.
   bytes secret_hash = 2;

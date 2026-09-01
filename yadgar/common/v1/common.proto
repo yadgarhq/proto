@@ -1,6 +1,15 @@
 // Shared envelope and scope types. Every module imports this and nothing else
 // from outside its own package.
 //
+// ONE EXCEPTION, recorded HERE because a reader of the rule above will not open
+// the files that break it: yadgar/iam/v1 and yadgar/iamdb/v1 also import
+// yadgar/telemetry/v1, for D67's `Kind`. D74 keys a rate limit on that existing
+// bounded dimension rather than on a second taxonomy, and `buf breaking`'s FILE
+// rule means the enum cannot be moved into this file without breaking the
+// contract. Both files carry the full reasoning. The practical consequence is
+// that a consumer vendoring `iam` now vendors `telemetry` too, because
+// `buf export` follows the import graph.
+//
 // Field numbers 1-15 encode in one byte, so the envelope fields that appear on
 // every row are kept inside that range. 13-15 are reserved for envelope growth;
 // entity-specific fields start at 16.
