@@ -124,7 +124,10 @@ message Scope {
 
 // Applied to every mutating RPC (D9). The same key replayed returns the
 // original outcome rather than performing the write twice; required because a
-// retrying load balancer will deliver a write more than once.
+// retrying load balancer will deliver a write more than once. THE SAME KEY
+// CARRYING A DIFFERENT REQUEST IS REFUSED, with INVALID_ARGUMENT, rather than
+// replayed: replaying it would answer a request nobody made and report success.
+// Which fields count as the request is per-RPC, and D9 carries the argument.
 message Idempotency {
   string key = 1;
 }
