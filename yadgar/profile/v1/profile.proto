@@ -36,6 +36,22 @@ message BatchGetPreferencesRequest {
   repeated string namespaces = 2;
 }
 message BatchGetPreferencesResponse {
+  // A REQUESTED NAMESPACE THAT MATCHES NOTHING IS OMITTED, and the response is
+  // still `Ok`. Absence is the negative answer: nothing was ever set for that
+  // namespace, none is visible at this scope, or it was deleted — deliberately
+  // indistinguishable, because an answer that told them apart would report the
+  // existence of a record the caller may not see. An empty list is a valid
+  // answer, not an error, and it is the ordinary answer for a fresh user.
+  //
+  // WHAT THE CONSUMER OWES: MATCH BY `namespace`, NEVER BY POSITION. This list
+  // is SPARSE and carries NO ORDER GUARANTEE — it is shorter than `namespaces`
+  // whenever anything is missing — so index-aligned iteration pairs the wrong
+  // namespace with the wrong value and reports it as success. That is worse here
+  // than elsewhere: `value` is opaque bytes, so a module handed another module's
+  // preference cannot tell by inspecting it. Nothing about the mistake fails to
+  // compile, which is why the rule is stated on the message a consumer receives
+  // rather than left to be noticed (ADR-0512). A caller that needs to know WHICH
+  // namespaces were missing subtracts what came back from what it asked for.
   repeated Preference preferences = 1;
 }
 
