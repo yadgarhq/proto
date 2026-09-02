@@ -134,6 +134,21 @@ message ResolveCredentialResponse {
   // unset has met a server bug, and must read it as no override for that
   // bucket rather than as a denial.
   repeated RateLimitOverride rate_limit_overrides = 5;
+
+  // ADR-0522's inheritable setting, travelling with identity for the reason
+  // `is_admin` and the limits above do: one lookup answers everything the
+  // gateway needs to build a Scope, and one invalidation withdraws all of it.
+  //
+  // THE INPUTS, NOT THE ANSWER. `iam` returns the organisation's value, its lock
+  // and every team override, and resolves NONE of it. The resolution depends on
+  // the team of the ROW being read, which neither `iam` nor the gateway knows —
+  // it is evaluated where the reach is computed. See
+  // `yadgar.common.v1.InheritedSetting`, which states the rule once.
+  //
+  // AN `iam` TOO OLD TO SET THIS LEAVES org_value UNSPECIFIED, which a -db
+  // refuses rather than reading as OFF. That is why the gateway and `iam` are
+  // deployed ahead of any -db that enforces it.
+  yadgar.common.v1.InheritedSetting owner_reads_own_record = 6;
 }
 
 // Exchange a username and password for a long-lived token.

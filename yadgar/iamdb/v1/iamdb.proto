@@ -146,6 +146,16 @@ message ResolveCredentialResponse {
   // EMPTY means this user has no override, so the gateway's configured defaults
   // apply unmodified. It does not mean zero, and it does not mean deny.
   repeated RateLimitOverride rate_limit_overrides = 5;
+
+  // ADR-0522's inheritable setting, read in the SAME transaction as the
+  // credential for the reason `is_admin` and the overrides above are: two reads
+  // would be two cache lifetimes and a window in which a changed policy is not
+  // yet in force.
+  //
+  // THE INPUTS, NOT THE ANSWER — this module stores the organisation's value and
+  // lock and every team's override, and resolves none of them. See
+  // `yadgar.common.v1.InheritedSetting`, which states the resolution once.
+  yadgar.common.v1.InheritedSetting owner_reads_own_record = 6;
 }
 
 // Fetch what is needed to verify a password, and nothing else.
