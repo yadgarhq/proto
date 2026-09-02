@@ -61,6 +61,21 @@ message BatchGetWikiPagesRequest {
   repeated string ids = 2;
 }
 message BatchGetWikiPagesResponse {
+  // A REQUESTED ID THAT MATCHES NOTHING IS OMITTED, and the response is still
+  // `Ok`. Absence is the negative answer: no such page, none visible at this
+  // scope, or soft-deleted (D26) — deliberately indistinguishable, because an
+  // answer that told them apart would report the existence of a record the
+  // caller may not see. An empty list is a valid answer, not an error.
+  //
+  // WHAT THE CONSUMER OWES: MATCH BY `meta.id`, NEVER BY POSITION. This list is
+  // SPARSE and carries NO ORDER GUARANTEE — it is shorter than `ids` whenever
+  // anything is missing — so index-aligned iteration pairs the wrong id with the
+  // wrong page and reports it as success. That is a live hazard here: a batch of
+  // URNs is how a link fan-out is resolved, so the mistake renders one page's
+  // body under another page's link. Nothing about it fails to compile, which is
+  // why the rule is stated on the message a consumer receives rather than left
+  // to be noticed (ADR-0512). A caller that needs to know WHICH ids were missing
+  // subtracts what came back from what it asked for.
   repeated WikiPage pages = 1;
 }
 
