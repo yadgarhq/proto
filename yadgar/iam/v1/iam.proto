@@ -66,6 +66,23 @@ message ResolveCredentialResponse {
   // personal data; they are facts about what this caller may do, and D74
   // requires them to travel with identity so that one lookup answers both and
   // one invalidation withdraws both.
+  //
+  // AN EMPTY user_id IS THE NEGATIVE ANSWER, AND IT ARRIVES AS `Ok`. It means no
+  // live credential matched — unknown, revoked, expired, or belonging to a
+  // soft-deleted person. It is NOT an error: "no such credential" and "the store
+  // is broken" are different outcomes and a caller must be able to tell them
+  // apart — one is a 401, the other is a 503. Stated HERE, and not only on
+  // `yadgar.iamdb.v1.ResolveCredentialResponse` where the sentinel is produced,
+  // because this is the file a gateway-side consumer compiles against and it
+  // deliberately does not vendor that one (ADR-0512).
+  //
+  // WHAT THE CONSUMER OWES. An empty user_id is a REFUSAL: answer 401, and never
+  // carry the empty string into a scope, a cache key, or an audit record as if it
+  // were an identity. A transport failure on this RPC is the other outcome and
+  // answers 503. The sentinel needs no handling to COMPILE and reads as success
+  // to anyone who has not been told it exists, so an unhandled one fails OPEN on
+  // the authentication path — which is what happened the first time this
+  // response was consumed.
   string user_id = 1;
   repeated string team_ids = 2;
 
@@ -73,6 +90,15 @@ message ResolveCredentialResponse {
   // TTL is a BACKSTOP, not the invalidation mechanism — revocation and team
   // changes arrive as broker events (D72). A caller that treats this as the only
   // signal keeps honouring a revoked credential until it expires.
+  //
+  // ZERO SAYS WHAT AN EMPTY user_id SAYS. `iam` sets this to zero exactly when
+  // `user_id` is empty, because a negative answer is cacheable for no interval at
+  // all: there is nothing worth remembering about a token that belongs to nobody,
+  // and a revoked credential's refusal is the one answer that must never be
+  // served from a cache. It is a SECOND, INDEPENDENT signal of the one condition,
+  // published so that a consumer checking both is harder to get wrong than one
+  // checking neither — but the empty `user_id` is the check that carries the
+  // refusal, and this one does not replace it.
   int64 valid_for_seconds = 3;
 
   // D73's admin flag. The gateway needs it on every request: it gates the
