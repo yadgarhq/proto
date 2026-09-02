@@ -526,11 +526,48 @@ message ListCredentialsResponse {
 // An account is created once and an enrolment expires in 24 hours, so a
 // combined RPC would give an admin no way to ask for a fresh enrolment without
 // also asking for another account. One idempotency key would then cover two
-// acts with two lifetimes: replaying it must return the original outcome, and
-// the original outcome of "create this account" is not a single-use secret to
-// be handed over again. Here the mint IS the operation, so a replay returning
-// the same token is correct idempotent behaviour — which is exactly why
-// IssueCredential is already shaped this way.
+// acts with two lifetimes, AND THE TWO ANSWER A REPLAY DIFFERENTLY: "create
+// this account" replays, because the account is still there to describe, and
+// this mint refuses, for the reason stated next. A single key meaning "replay
+// one half and refuse the other" is not a key any caller can use.
+//
+// A REPLAYED KEY IS REFUSED HERE, with INVALID_ARGUMENT. It is never answered
+// with the token the first attempt minted. THE GENERAL RULE, stated so that a
+// caller meeting it on some later RPC is not meeting it for the first time: AN
+// RPC WHOSE SUCCESSFUL OUTCOME IS A SINGLE-USE SECRET REFUSES A REPLAY RATHER
+// THAN ANSWERING WITH A SPENT ONE (ADR-0519). D9's replay rule still holds for
+// every RPC whose outcome can be re-derived from what the store kept; this is
+// the carve-out for an outcome that cannot, and the boundary is whether the
+// answer is reconstructible without persisting the secret itself.
+// yadgar.common.v1.Idempotency states the rule beside D9's and enumerates
+// which RPCs it covers.
+//
+// WHAT MAKES THE REPLAY UNANSWERABLE RATHER THAN MERELY UNWISE. The token is
+// shown once and only a hash is kept (D72), so nothing anywhere still holds
+// the first secret: `iam` keeps no store at all (D4), and
+// yadgar.iamdb.v1.CreateEnrolmentRequest carries `secret_hash` rather than the
+// secret. A replay answered with the original `enrolment_id` therefore hands
+// back a token whose secret matches no live enrolment. It looks valid, it
+// cannot be redeemed, and it fails in front of the person holding it rather
+// than in front of the admin who asked for it.
+//
+// THE REFUSAL NEEDS NO MECHANISM OF ITS OWN, which is why the status code is
+// the one already in use rather than a new one. `iam` mints a FRESH secret on
+// every attempt, so a retry reaches yadgar.iamdb.v1.CreateEnrolment as the
+// same key carrying a DIFFERENT `secret_hash`. That is a repeated key with a
+// different request, which yadgar.common.v1.Idempotency already refuses
+// org-wide with INVALID_ARGUMENT, and yadgar.iamdb.v1.CreateEnrolmentRequest
+// names `secret_hash` as one of the fields that request is compared by. `iam`
+// passes that refusal through rather than translating it, so one code carries
+// one meaning: this idempotency key cannot be honoured.
+//
+// THE RESIDUAL OF THE REFUSAL, STATED RATHER THAN LEFT TO BE NOTICED: an admin
+// whose response is genuinely lost does not retry, they mint a fresh
+// enrolment. The first one is then live and nobody holds it, and no RPC on
+// this service withdraws an enrolment, so it stands until it expires —
+// bounded by the enrolment lifetime, 24 hours. That is accepted (ADR-0519):
+// an unused enrolment expiring quietly is a smaller harm than handing somebody
+// a token that cannot be redeemed and gives no reason why.
 //
 // D73 puts token RESEND outside the first cut: handing the same secret over
 // again, which this store cannot do in any case because it keeps only a hash.
@@ -556,6 +593,13 @@ message ListCredentialsResponse {
 // admin-sets-initial-password and it is why this shape stands; it is not the
 // same thing as the property being gone.
 message IssueEnrolmentRequest {
+  // COVERS A RETRY BY REFUSING IT, not by replaying it — the block above this
+  // message carries the reasoning and ADR-0519 carries the decision. A key
+  // this service has already minted against is answered with
+  // INVALID_ARGUMENT, and the recovery is a fresh call under a fresh key.
+  // Stated on the field as well as above it because a caller writes the retry
+  // loop here: a loop that reuses the key on a timeout gets a refusal rather
+  // than the token it is waiting for.
   yadgar.common.v1.Idempotency idempotency = 1;
   string user_id = 2;
 }

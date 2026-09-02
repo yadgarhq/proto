@@ -187,7 +187,36 @@ message SetPasswordRequest {
 }
 message SetPasswordResponse {}
 
+// Record one enrolment. `iam` computed the secret and kept none of it (D4), so
+// this store holds a hash and an expiry and nothing that can produce the secret
+// again.
+//
+// THAT IS WHY yadgar.iam.v1.IssueEnrolment REFUSES A REPLAYED KEY rather than
+// answering with the original token (ADR-0519), and the refusal is enforced
+// HERE rather than there: `iam` holds no store and cannot tell a key it has
+// seen from one it has not. The refusal below is the whole mechanism, and it
+// needs no field and no new status code.
 message CreateEnrolmentRequest {
+  // WHICH FIELDS COUNT AS THE PAYLOAD, stated per RPC as
+  // yadgar.common.v1.Idempotency requires rather than left to a reader:
+  // `user_id`, `secret_hash` AND `expires_at` — every field of this request
+  // except `idempotency` itself, which carries the key the comparison is keyed
+  // on. A repeated key carrying a different one of those is REFUSED with
+  // INVALID_ARGUMENT by that org-wide rule.
+  //
+  // `secret_hash` IS THE FIELD THAT MAKES THE REFUSAL BITE, and it is why this
+  // enumeration is load-bearing rather than tidy. A caller reading the payload
+  // as `user_id` alone would replay instead, and hand back an `enrolment_id`
+  // whose secret the retry never stored — a token that looks valid and
+  // redeems for nobody. `iam` mints a FRESH secret on every attempt, so a
+  // retried yadgar.iam.v1.IssueEnrolment ALWAYS arrives here with a differing
+  // `secret_hash`; the refusal is therefore structural rather than a rule an
+  // implementation has to remember to apply.
+  //
+  // The hash is deterministic — an enrolment is looked up by it — so this
+  // boundary can compare the one presented now against the one the key
+  // originally recorded, exactly as RedeemEnrolmentRequest below can and for
+  // the same reason.
   yadgar.common.v1.Idempotency idempotency = 1;
   string user_id = 2;
   // The HASH, computed by `iam`. The secret never reaches the store, so it is
