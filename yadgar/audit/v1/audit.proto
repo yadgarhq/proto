@@ -26,8 +26,41 @@ message WriteEvent {
   string id = 1;
   google.protobuf.Timestamp occurred_at = 2;
 
+  // ATTESTED, AND THAT IS WHAT SEPARATES IT FROM THE FIELD BELOW. It is filled
+  // in from `yadgar.common.v1.Scope`, which the gateway populates from the
+  // request's credentials and which a caller cannot supply — so a reader of
+  // this field is reading an identity something checked.
+  //
+  // THE IDENTITY MODULE'S ADMINISTRATIVE PATH IS THE ONE EXCEPTION AND IT DOES
+  // NOT USE THIS FIELD. Those RPCs carry no `Scope`, deliberately (ADR-0488),
+  // so nothing on that path is attested at the boundary that records the event.
+  // They attribute through `unverified_actor` instead.
+  //
+  // PRESENCE OF `unverified_actor` IS THE DISCRIMINATOR, NEVER AN EMPTY STRING
+  // HERE. A reader asks whether that message is present; it never infers the
+  // answer from this field being empty, because "unattributed" and "attributed
+  // to the empty id" would then be one value again — the collapse ADR-0512
+  // records.
   string actor_user_id = 3;
   optional string actor_agent = 4;
+
+  // WHO THE GATEWAY BELIEVED WAS CALLING, WHERE NOTHING AT THIS BOUNDARY COULD
+  // VERIFY IT. Set on the identity module's administrative path and nowhere
+  // else today. What may be done with it is stated once, on
+  // yadgar.common.v1.UnverifiedActor: reported as unverified, and nothing else.
+  //
+  // **IT IS A SEPARATE FIELD FROM `actor_user_id` RATHER THAN A SOURCE FOR IT,
+  // AND THAT IS THE WHOLE POINT.** Every other module attributes from an
+  // attested `Scope`, so `actor_user_id` means "this is who it was". Writing an
+  // unverifiable value into that same field would SPLIT ITS MEANING SILENTLY,
+  // and a later reader — an incident review, an auditor, a regulator — would
+  // have no way to tell which of the two they were holding. That is the exact
+  // failure this pair exists to prevent: an audit record is opened long after
+  // everyone who knew how it was written has gone, and it must say what it
+  // knows AND what it does not.
+  //
+  // AT MOST ONE OF THE TWO IS SET ON ANY EVENT.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 13;
 
   Action action = 5;
   string target_urn = 6;
@@ -52,8 +85,25 @@ message WriteEvent {
 message ReadEvent {
   string id = 1;
   google.protobuf.Timestamp occurred_at = 2;
+  // ATTESTED, on the same terms as WriteEvent.actor_user_id above — and with
+  // the same one exception, which reaches a READ too. The identity module's
+  // `ListCredentials` is administrative (D72) and carries no `Scope`, so it
+  // attributes through `unverified_actor` below. The write half of this defect
+  // and the read half are one defect, so they get one shape.
   string actor_user_id = 3;
   optional string actor_agent = 4;
+
+  // WHO THE GATEWAY BELIEVED WAS CALLING. See WriteEvent.unverified_actor for
+  // why this is a field of its own and not a source for the one above, and
+  // yadgar.common.v1.UnverifiedActor for what may be done with it.
+  //
+  // A GAP IN THIS STREAM WAS ALREADY NOT EVIDENCE THAT A READ DID NOT HAPPEN,
+  // and this field does not change that. Read auditing is best-effort and may
+  // be sampled, so an unverifiable attribution on a stream that may be missing
+  // entries is weaker still. It is recorded because it is the only evidence
+  // there is, never because it is good evidence.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 8;
+
   repeated string target_urns = 5;
   string project_id = 6;
   // The rpc that served the read, e.g. "yadgar.recall.v1.RecallService/Recall".
