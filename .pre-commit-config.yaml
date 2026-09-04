@@ -69,51 +69,69 @@ repos:
       #     passes on an empty set. A renumbered field in any of them exits 0
       #     against v1.0.0 and 100 against v1.5.0 — verified by injecting one.
       #
-      # THE SECOND PIN IS BUMPED AT EVERY RELEASE, and the hook below is what
-      # says so — the version appears once, in its args, and nowhere else. A
-      # stale pin is not merely conservative: it still compares the files that
-      # existed at that tag, but anything added AFTER it and then broken slips
-      # through, which is the exact class this second invocation exists to
-      # catch.
+      # THE SECOND COMPARISON NAMES NO VERSION, and that is the whole of the
+      # local hook below. It was a second invocation here, with the tag written
+      # into its args, and that constant went stale AFTER EVERY MERGE: merging
+      # cuts a tag, so the number a pull request bumped it to was already one
+      # release behind by the time it landed. Seven pull requests carried a bump
+      # between v1.5.0 and v1.10.0, every one of them riding along inside
+      # unrelated work, and `main` sat red in between. A stale constant is worse
+      # than noisy — it keeps comparing the files that existed at that tag while
+      # everything added since goes ungated, which is the exact class the second
+      # comparison exists to catch.
       - id: buf-breaking
         alias: buf-breaking-major
         name: buf breaking (v1.0.0, the major's first tag)
         args: [--against, .git#tag=v1.0.0]
-      - id: buf-breaking
-        alias: buf-breaking-previous
-        name: buf breaking (the previous tag)
-        args: [--against, .git#tag=v1.10.0]
 
-  # THE PIN ABOVE IS THE ONE THING IN THIS FILE THAT GOES STALE, and a stale one
-  # fails SILENTLY — it keeps comparing the files that existed at that tag while
-  # everything added since goes ungated. A comment asking a releaser to remember
-  # is the same discipline that left the first pin standing alone since v1.0.0,
-  # so the obligation is a hook instead. It reads the pin out of this file and
-  # compares it with the newest tag reachable from HEAD: the first commit after
-  # a release fails until the pin is bumped, and the message says what to write.
+  # THE PREVIOUS TAG, RESOLVED WHEN THE HOOK RUNS. `git describe --tags
+  # --abbrev=0` is the newest tag reachable from HEAD, which is what the constant
+  # above was always transcribed from — so deriving it deletes the
+  # transcription, the release step that performed it, and the hook that used to
+  # check it had been performed.
   #
-  # IT DOES NOT RUN buf, deliberately. Resolving the tag at run time and handing
-  # it to `buf breaking` would need buf, and the hooks above are
-  # `language: golang` — pre-commit builds buf into an isolated environment and
-  # it is NOT on PATH, in CI or on a developer's machine. A local hook would
-  # have to pin the buf version a second time to get one, which trades this
-  # staleness for another. `sh` and `git` are always there.
+  # WHY THIS IS NOT THE UPSTREAM HOOK, which is maintained and already pins buf
+  # by rev. pre-commit passes `args` LITERALLY: there is no shell, so `$(...)` in
+  # an argument reaches buf as those characters. The value has to be computed by
+  # the entry, and the entry has to be able to run buf. The upstream hooks are
+  # `language: golang`, which builds buf into an isolated environment that is NOT
+  # on PATH — in CI or on a developer's machine — so `language: system` would
+  # need buf installed everywhere, which it is not. `language: golang` with
+  # `additional_dependencies` gets the same isolated build for a local hook.
   #
-  # IT READS THE NEWEST TAG REACHABLE FROM HEAD, which on the default branch is
-  # the newest tag there is and on a branch cut before a release is not. Such a
-  # branch is asked for the pin IT can see — an older tag, narrowing the gate
-  # rather than widening it. Rebase on the default branch before writing what it
-  # asks for.
+  # THE PRICE IS buf's VERSION WRITTEN TWICE, paid deliberately. `rev: v1.72.0`
+  # above and `buf@v1.72.0` below are the same version, and `pre-commit
+  # autoupdate` bumps the first and not the second. Keep them equal; when they
+  # are not, an older buf runs the breaking check, which misses check categories
+  # added since and nothing else. That is the drift being bought, and it is not
+  # the drift being sold: a stale `--against` SWITCHED THE GATE OFF for every
+  # file added after the tag it named.
   #
-  # NO TAG REACHABLE FROM HEAD — a fresh repository, or a clone deep enough for
-  # history and shallow on tags — SKIPS rather than fails. The precommit job
-  # checks out at `fetch-depth: 0` precisely because `buf breaking` needs the
-  # tags, so a skip there would mean the tags are genuinely absent.
+  # IT ALSO BUILDS buf A SECOND TIME, once per environment — about 230 CPU
+  # seconds. It gets that back: pre-commit's cache is keyed on this file, which
+  # changed on every pull request while the tag lived here and now does not.
+  #
+  # NO TAG REACHABLE FROM HEAD FAILS, and says why. There is no previous release
+  # to compare against, so the gate cannot run — and a gate that cannot run must
+  # not report green. `buf-breaking-major` above already fails this way on a
+  # clone without tags ("couldn't find remote ref v1.0.0"), so this matches the
+  # behaviour beside it rather than introducing one. The precommit job checks out
+  # at `fetch-depth: 0` precisely because `buf breaking` needs the tags, so a
+  # failure there means they are genuinely absent.
+  #
+  # A BRANCH CUT BEFORE A RELEASE resolves the tag IT can see, which is an older
+  # one — a narrower comparison, never a wrong one. CI does not inherit that
+  # narrowing: a `pull_request` run checks out the merge ref, whose history
+  # contains the base branch, so `git describe` there is main's newest tag
+  # however stale the branch is. The constant had no such backstop — it was
+  # whatever the branch had written down.
   - repo: local
     hooks:
-      - id: buf-breaking-pin-is-current
-        name: buf breaking pins the previous tag
-        language: system
+      - id: buf-breaking-previous
+        name: buf breaking (the previous tag)
+        language: golang
+        language_version: 1.25.10
+        additional_dependencies: ["github.com/bufbuild/buf/cmd/buf@v1.72.0"]
+        types: [proto]
         pass_filenames: false
-        always_run: true
-        entry: sh -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null) || exit 0; pinned=$(grep -A2 buf-breaking-previous .pre-commit-config.yaml | sed -n "s/.*\.git#tag=\(v[0-9][0-9.]*\).*/\1/p"); [ "$latest" = "$pinned" ] && exit 0; echo "buf breaking is pinned against ${pinned:-nothing} but the newest tag reachable from HEAD is $latest."; echo "Set the buf-breaking-previous args in .pre-commit-config.yaml to .git#tag=$latest."; exit 1'
+        entry: sh -c 'previous=$(git describe --tags --abbrev=0 2>/dev/null); if [ -z "$previous" ]; then echo "No tag is reachable from HEAD, so there is no previous release to compare against. Fetch the tags (git fetch --tags) and run again."; exit 1; fi; exec buf breaking --against ".git#tag=$previous"'
