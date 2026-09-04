@@ -726,14 +726,19 @@ message SetRateLimitOverrideResponse {}
 // token that exists to create the FIRST admin rewrite the read policy for the
 // whole deployment before an admin exists to notice.
 //
-// **THE GAP, STATED RATHER THAN LEFT TO BE FOUND.** The request carries no
-// attested identity, in common with every administrative RPC on this service.
-// So `iam` can neither VERIFY that the caller is an administrator nor RECORD
-// which one changed the policy. The authorisation site exists and is the
-// gateway; the audit point cannot attribute. That is a property of the contract
-// as it stands, and a second authentication mechanism invented for this one
-// verb would be a second place for it to be wrong, holding the same secret
-// twice.
+// **THE GAP, STATED RATHER THAN LEFT TO BE FOUND — AND HALF OF IT IS NOW
+// CLOSED.** The request carries no attested identity, in common with every
+// administrative RPC on this service, so `iam` cannot VERIFY that the caller is
+// an administrator. That half is unchanged: the authorisation site exists and
+// is the gateway, on D73's admin flag. A second authentication mechanism
+// invented for this one verb would be a second place for it to be wrong,
+// holding the same secret twice.
+//
+// THE RECORDING HALF IS SERVED BY `unverified_actor` BELOW. The audit point
+// attributes, and what it attributes is a self-asserted id this service cannot
+// check — A RECORD RATHER THAN AN ATTESTATION, and never evidence that the
+// named person acted. `yadgar.common.v1.UnverifiedActor` states what may be
+// done with it.
 //
 // **VALIDATION IS STATED ONCE, ON `yadgar.common.v1.SettingScope`**, and is
 // binding here rather than summarised — this service refuses these itself

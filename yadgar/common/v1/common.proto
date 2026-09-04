@@ -410,11 +410,52 @@ message Scope {
 //
 // **A RECEIVER MUST NOT USE THIS AS AN AUTHORISATION INPUT.** It MUST NOT
 // decide whether a request is permitted, MUST NOT widen or narrow a reach,
-// MUST NOT select or filter a row, and MUST NOT stand in for `Scope.user_id`.
-// ITS ONE SANCTIONED USE IS ATTRIBUTION: writing it into an audit record so a
-// later reader knows who the gateway believed was calling. A receiver that
-// authorises on it has built an authentication mechanism out of a field that
-// anything able to reach that receiver can set to anything.
+// MUST NOT select or filter A ROW OF THE ENTITY THE REQUEST ACTS UPON, and
+// MUST NOT stand in for `Scope.user_id`. ITS ONE SANCTIONED USE IS
+// ATTRIBUTION: writing it into an audit record so a later reader knows who the
+// gateway believed was calling. A receiver that authorises on it has built an
+// authentication mechanism out of a field that anything able to reach that
+// receiver can set to anything.
+//
+// **READING AN AUDIT RECORD BACK BY ITS RECORDED ATTRIBUTION IS SANCTIONED,
+// AND THE ROW CLAUSE IS NARROWED SO THAT IT SAYS SO.** Unnarrowed, that clause
+// forbade the one thing that makes an attribution usable. An incident review
+// asks what `u-42` did, and a store obeying the wide reading answers with every
+// attested act while silently omitting every administrative one — no error, no
+// gap marker, an answer that looks complete. D25 refuses an audit log with
+// silent holes precisely because it will be trusted, and that hole would be
+// reached by following this contract rather than by breaking it.
+//
+// **THE TWO CASES ARE TOLD APART BY DIRECTION, NOT BY WHO IS ASKING.** On a
+// REQUEST the value is a live assertion about an operation that has not
+// happened yet, and every clause above binds — save the carve-out stated here,
+// which is the one exception there is. In an AUDIT RECORD it is a recorded
+// artifact of an act already committed, on a different message travelling the
+// other way, and matching a stored column against a value a query supplied
+// decides nothing about anybody's reach.
+//
+// **A QUERY FIELD NAMING AN ACTOR TO SEARCH RECORDED ATTRIBUTIONS FOR IS THE
+// CARVE-OUT'S INSTRUMENT, AND THE ROW CLAUSE DOES NOT BIND IT, HOWEVER IT IS
+// TYPED.** Said rather than left to be worked out, because the field carrying
+// this query does not exist yet and will arrive on a REQUEST: an audit query is
+// a request, and the records it selects are the entity it acts upon, so the row
+// clause read without this sentence would forbid the very query the paragraph
+// above sanctions. Its implementor would then meet the same three losing
+// options one level down, which is the trap this narrowing exists to close.
+//
+// **THE CARVE-OUT IS A SELECTION OVER RECORDS AND IS NEVER AN AUTHORISATION.**
+// Whoever runs that query was authorised to read the audit store by something
+// else entirely, and this field takes no part in that decision. A caller who
+// names an actor learns which rows carry that unverifiable attribution, which
+// is exactly as good as the attribution and no better. A row matching an actor
+// is NOT evidence that the named person acted.
+//
+// **NO FIELD CARRIES THAT QUERY TODAY, AND ONE EXISTING FIELD MUST NOT BE
+// MISTAKEN FOR IT.** `yadgar.audit.v1.QueryAuditRequest.actor_user_id` filters
+// the ATTESTED column and only that one. It MUST NOT be mapped onto both
+// columns: that would re-collapse the very distinction the split field exists
+// to create, and a reader could no longer tell which of the two an answer came
+// from. A filter of its own is additive and is not added here.
 //
 // **IT IS NEVER PART OF AN IDEMPOTENCY PAYLOAD COMPARISON, ON ANY RPC THAT
 // CARRIES IT, TODAY OR LATER.** D9 refuses the same key carrying a DIFFERENT
@@ -428,6 +469,34 @@ message Scope {
 // request SUCCEEDS, which is a behavioural input, and the four MUST NOTs above
 // exist precisely so that it has none. INERT BY CONSTRUCTION IS THE PROPERTY:
 // this field changes what is RECORDED and never what HAPPENS.
+//
+// **THE FIRST ACTOR'S IS THE ATTRIBUTION OF RECORD, AND A REPLAY RECORDS NO
+// SECOND ONE.** The exclusion above is what makes a retry under a used key a
+// replay: the original outcome is returned and no write happens, so there is no
+// transaction for D25's outbox row to be written in and no new audit event to
+// carry the second actor. Administrator A promotes a user and the response is
+// lost; administrator B retries the same key stamped with their own id. The
+// store holds ONE event, naming A, and B's administrative attempt is recorded
+// NOWHERE. A READER OF AN ATTRIBUTION IS READING WHO THE GATEWAY BELIEVED MADE
+// THE ACT, NEVER THE SET OF PEOPLE WHO ASKED FOR IT.
+//
+// **D9's OWN TEST IS WHETHER A REPLAY WOULD SILENTLY DISCARD THE DIFFERENCE,
+// AND READ LITERALLY THIS FIELD FAILS IT.** The difference is discarded and the
+// discarding is silent. The exclusion stands anyway, and it stands on which
+// harm each answer buys rather than on a claim that the test is passed. D9's
+// test was written for a difference that changes the OPERATION — a second
+// password under a used key, where the first stays live and the caller believes
+// the second took effect — and there a refusal is the only answer that does not
+// lie. This difference changes only the RECORD. Refusing it would let an
+// audit-only field decide whether a request SUCCEEDS, so an identical retry by
+// a second administrator picking up a change the first one lost is answered
+// with INVALID_ARGUMENT while nothing about the operation differs.
+//
+// **THE CHOICE IS ONE LOST ATTRIBUTION AGAINST A REFUSED CORRECT OPERATION,
+// AND THE CONTRACT TAKES THE FIRST.** It is a cost rather than the absence of
+// one, and it is written here so that an incident review holding a single actor
+// on a replayed key knows the hole is by construction and not a gateway that
+// forgot to stamp.
 //
 // **THE TYPE IS NAMED FOR THE WARNING BECAUSE THE COMMENT DOES NOT TRAVEL.**
 // This paragraph is read once, by whoever wires the field. The field is read

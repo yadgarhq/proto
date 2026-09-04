@@ -82,7 +82,7 @@ repos:
       - id: buf-breaking
         alias: buf-breaking-previous
         name: buf breaking (the previous tag)
-        args: [--against, .git#tag=v1.9.1]
+        args: [--against, .git#tag=v1.10.0]
 
   # THE PIN ABOVE IS THE ONE THING IN THIS FILE THAT GOES STALE, and a stale one
   # fails SILENTLY — it keeps comparing the files that existed at that tag while

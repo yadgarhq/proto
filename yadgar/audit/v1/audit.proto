@@ -64,6 +64,36 @@ message WriteEvent {
 
   Action action = 5;
   string target_urn = 6;
+
+  // THE PROJECT THE CHANGED ENTITY BELONGS TO, AND EMPTY ON AN ADMINISTRATIVE
+  // EVENT. The identity module's administrative acts — creating a user,
+  // promoting an administrator, adding a team member — belong to no project, so
+  // there is nothing to put here and the empty string is the whole of what is
+  // known.
+  //
+  // **THE EMPTY VALUE OF THIS FIELD IS NOT A PATH, SO NO SUBTREE CONTAINS IT.**
+  // `QueryAuditRequest.scope.project_id` is the subtree being queried, matching
+  // that path and everything beneath it. An empty value here names no path and
+  // lies beneath none, so no scope matches it. AN ADMINISTRATIVE EVENT IS
+  // THEREFORE UNREACHABLE BY A SCOPED QUERY, before any actor filter is
+  // consulted at all.
+  //
+  // THAT DECIDES WHAT THIS EVENT FIELD HOLDS AND WHAT MATCHES IT, AND NOTHING
+  // ABOUT `yadgar.common.v1.Scope`. What an empty value in a QUERY's scope
+  // means is that message's to state, and a second normative copy here would be
+  // the one that drifts.
+  //
+  // STATED RATHER THAN LEFT UNDEFINED, BECAUSE THE TWO READINGS FAIL IN
+  // OPPOSITE DIRECTIONS AND BOTH FAIL QUIETLY. An implementor reading empty as
+  // "matches everything" leaks every administrative act in the deployment into
+  // every project-scoped query; one reading it as a literal project id matches
+  // a project whose id is empty and finds nothing. Reaching these events takes
+  // a query-side field that asks for administrative events rather than a scope,
+  // which is additive and is not added here.
+  //
+  // A CONSUMER NEVER INFERS THE ADMINISTRATIVE PATH FROM THIS FIELD BEING
+  // EMPTY. Presence of `unverified_actor` is the discriminator, here as for
+  // `actor_user_id` above.
   string project_id = 7;
   optional string team_id = 8;
 
