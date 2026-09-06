@@ -28,7 +28,7 @@ concurrently (D15), and the version is part of the service name
 | `yadgar/task/v1`    | `Task` + `TaskDbService` — addressed                                                                                      |
 | `yadgar/recall/v1`  | `RetrievalProviderService` fanout contract + `RecallService`                                                              |
 | `yadgar/audit/v1`   | `WriteEvent` / `ReadEvent` + `AuditDbService`                                                                             |
-| `yadgar/project/v1` | `Project` + `ProjectDbService` — hierarchical paths, `ResolveProject`                                                     |
+| `yadgar/project/v1` | `Project` + `ProjectDbService` + `ProjectService` — hierarchical paths, `ResolveProject`, both tiers in one file          |
 | `yadgar/tag/v1`     | `Tag` + `TagDbService` — the canonical vocabulary, `ResolveTags`                                                          |
 | `yadgar/profile/v1` | `Preference` + `ProfileDbService` — opaque per-user blobs                                                                 |
 | `yadgar/viz/v1`     | `Dashboard` + `VizDbService` — coexisting, not resolved                                                                   |
@@ -42,7 +42,10 @@ Verified with `buf lint` and `buf build` (buf 1.72.0) — both clean, re-run aft
 D39–D46 amendments. The directory
 layout mirrors the package path and services carry the `Service` suffix because
 buf's `STANDARD` lint set requires both; `Db` is kept in the name to say which
-half of a logic/`-db` twin pair the service is.
+half of a logic/`-db` twin pair the service is. In `yadgar/project/v1` that
+suffix is the only thing separating them: it is the one file carrying both
+halves, because the storage boundary took the package name first — the note
+above `ProjectService` in that file carries the reasoning.
 
 ## Conventions
 
