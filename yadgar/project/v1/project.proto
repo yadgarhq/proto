@@ -38,6 +38,14 @@ message RegisterProjectRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   yadgar.common.v1.Scope scope = 2;
   string path = 3;
+  // Refused past 255, enforced in BYTES today
+  // (`project-db/src/write.rs:58,116`, `MAX_DISPLAY_NAME`) against a column
+  // that is `display_name VARCHAR(255)` on utf8mb4 and so bounds CHARACTERS
+  // (`project-db/src/schema.rs:78`) — the same byte/character gap `iam` found
+  // and fixed on its own VARCHAR(255)-on-utf8mb4 columns, see
+  // `yadgar.iam.v1.LoginRequest.label` and
+  // `yadgar.iam.v1.CreateUserRequest.external_id` in `iam.proto`. Stated here
+  // as what the code does, not as a character bound, because it is not one.
   string display_name = 4;
 }
 message RegisterProjectResponse {
