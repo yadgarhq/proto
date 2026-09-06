@@ -260,6 +260,14 @@ message RegisteredPath {
 // builds `project` meets that wall on the hot-path verb rather than only on the
 // staged flush timer. Named rather than papered over.
 message ProjectServiceListProjectsRequest {
+  // A REQUEST, NOT A GUARANTEE, and a caller that has no number to pass sends
+  // none. The page a caller can actually be given is derived from BYTES rather
+  // than declared as a count (D56): gRPC's 4 MB message size is what binds, so
+  // the server returns what fits and says so in `next_page_token`. Inventing a
+  // number to put here would be inventing a configuration value nothing chose,
+  // which is what ADR-0569 exists to delete — and it would buy nothing, because
+  // the obligation on this rpc is to loop until the token is empty, at whatever
+  // page size that takes.
   int32 page_size = 1;
   string page_token = 2;
 }
