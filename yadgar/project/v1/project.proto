@@ -385,12 +385,22 @@ service ProjectService {
   // answers (`project-db/src/read.rs`), so one condition carries one code
   // across both tiers.
   //
-  // IT IS A CALLER ERROR AND MUST NOT BE RENDERED AS `401`. The gateway makes
-  // that exact mistake next door — an absent `x-yadgar-project` is mapped to
-  // `401 UNAUTHENTICATED` (`gateway/src/http.rs`) — and in both cases the
-  // credential is fine and the workspace fact is the problem. ADR-0512 is why
-  // the sentence is here: the consumer compiles against this file and not
-  // against the store's half of it, so a rule written only over there is a rule
-  // that depends on reading a file the caller does not have.
+  // IT IS A CALLER ERROR AND MUST NOT BE RENDERED AS `401`. The credential is
+  // fine; a workspace fact is missing or names nothing. The rule is stated on
+  // THIS file because ADR-0512 puts it here — a consumer compiles against this
+  // contract and not against the store's half of it, so a rule written only
+  // over there is a rule that depends on reading a file the caller does not
+  // have. It does not depend on anyone having made the mistake yet.
+  //
+  // THE ADJACENT SHAPE TO READ CAREFULLY, and it is a hazard rather than a
+  // defect filed against another repository. An ABSENT `x-yadgar-project` is
+  // refused as `MissingIdentity` and mapped to `401` under the label
+  // `UNAUTHENTICATED` (`gateway/src/http.rs`). BOTH attestation arms refuse it
+  // and only one of them refuses it in plain sight: the trusted-headers arm
+  // inline, and the DEFAULT `iam` arm by delegating to `from_resolved`
+  // (`gateway/src/attest.rs`) — which is where a reader who checks the arm they
+  // opened concludes the other one is inert. Correcting the diagnosis is a
+  // one-arm change in an existing match and belongs to that repository rather
+  // than to this contract.
   rpc ResolveProject(ProjectServiceResolveProjectRequest) returns (ProjectServiceResolveProjectResponse);
 }
