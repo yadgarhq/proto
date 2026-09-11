@@ -539,11 +539,12 @@ message SetRateLimitOverrideResponse {}
 // administrative RPC reaching this boundary. Only `iam` calls this service, so
 // nothing here re-derives that decision.
 //
-// **D73's BOOTSTRAP TOKEN DOES NOT REACH THIS VERB.** It reaches CreateUser and
-// SetUserAdmin and nothing else, which is how "it can do exactly one thing" is
-// enforced. Extending the bootstrap path here would let a token that exists to
-// create the FIRST admin rewrite the read policy for the whole deployment
-// before an admin exists to notice.
+// **D73's BOOTSTRAP TOKEN DOES NOT REACH THIS VERB.** It reaches CreateUser,
+// SetUserAdmin, and — since ADR-0655, amended by ADR-0656 — IssueEnrolment,
+// narrowly, for a target that is already an administrator and holds zero
+// credentials. Extending the bootstrap path here would let a token that
+// exists to create the FIRST admin rewrite the read policy for the whole
+// deployment before an admin exists to notice.
 //
 // **THE GAP, STATED RATHER THAN LEFT TO BE FOUND — AND HALF OF IT IS NOW
 // CLOSED.** This request carries no attested identity, in common with every
