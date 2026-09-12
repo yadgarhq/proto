@@ -382,6 +382,25 @@ message ProjectServiceResolveProjectResponse {
   bool via_alias = 3;
 
   ProjectStatus status = 4;
+
+  // The repository whose PR flow governs the RESOLVED row's namespace — NOT
+  // necessarily `resolved_path` itself, which may be a namespace anchor and
+  // may name no repository of its own (ADR-0673).
+  //
+  // Populated for an ORG-class row (`<org>/...`) and EMPTY for a personal one
+  // (`local/...`). `project-db`'s `ck_project_class` CHECK makes those two
+  // classes mutually exclusive at the engine: exactly one of `source_repo` /
+  // `owner_user_id` is non-null on the underlying row, never both and never
+  // neither.
+  //
+  // AN EMPTY VALUE IS A LEGITIMATE ANSWER, NOT AN ERROR. ADR-0674's degraded
+  // prose path depends on a caller handling absence rather than treating it
+  // as a failure: the registry may simply not have this data yet.
+  //
+  // See ADR-0673 for why a namespace anchor row is read THROUGH and never
+  // landed on — this field is why a caller reads through it at all: it is
+  // what lets a refusal name the repository that would fix it.
+  string source_repo = 5;
 }
 
 // The registry's PUBLIC API — what the gateway calls (D4). Holds no store, and
