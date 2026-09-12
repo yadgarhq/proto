@@ -124,6 +124,25 @@ message ResolveProjectResponse {
   // Set when candidate_path matched an alias rather than a live path.
   bool via_alias = 3;
   ProjectStatus status = 4;
+
+  // The repository whose PR flow governs the RESOLVED row's namespace — NOT
+  // necessarily `resolved_path` itself, which may be a namespace anchor and
+  // may name no repository of its own (ADR-0673).
+  //
+  // THE STORE-FACING HOP. `project-db` reads this straight off the resolved
+  // row (`ck_project_class`, `src/schema.rs:164`) and returns it here;
+  // `project`'s `ResolveProject` relay (`src/service.rs:315`) passes it
+  // straight through onto `ProjectServiceResolveProjectResponse.source_repo`,
+  // which the gateway composes its `PROJECT_UNREGISTERED_ORG` remediation
+  // from (`plans/project-validation.md`).
+  //
+  // EMPTY MEANS ABSENT, NOT UNKNOWN — proto3 gives a bare `string` no
+  // presence bit. An empty value means the resolver has no source repository
+  // for the resolved row: either the row is PRIVATE-class (`ck_project_class`
+  // gives it `owner_user_id`, never `source_repo`), or this store predates
+  // the column being populated. A caller MUST treat empty as absent and MUST
+  // NOT interpolate it into prose.
+  string source_repo = 5;
 }
 
 message GetProjectRequest {
