@@ -764,6 +764,169 @@ message RemoveTeamMemberRequest {
 }
 message RemoveTeamMemberResponse {}
 
+// HOW THE FINGERPRINT PRESENTED RELATES TO THE MARKER THIS STORE HOLDS
+// (ADR-0764). One vocabulary for both arms below, because both ask one
+// question — is the key set `iam` holds the key set these rows were encrypted
+// under — and two enums would make MATCH and MISMATCH two types meaning the
+// same thing, with a mapping between them for a caller to get wrong.
+//
+// THE ABSENT CASE AND THE MISMATCH CASE ARE MEMBERS RATHER THAN AN EMPTY
+// FIELD, AND THAT IS THE WHOLE REASON THIS ARM EXISTS. A key-derived lookup
+// answering "nothing found" for both collapses first boot into wrong key: the
+// caller takes the first-boot branch, writes a SECOND marker, and runs healthy
+// under a key that decrypts none of the rows already stored. That is the
+// silent-healthy-start failure ADR-0753 exists to prevent, rebuilt inside the
+// check written to prevent it. An outcome the server states cannot be read
+// that way; an empty result can. It is the shape RedeemOutcome above already
+// uses, for the reason stated there.
+//
+// THE CHECK PASSES ONLY ON AN EXPLICITLY POSITIVE MEMBER — MATCH or RECORDED —
+// AND NEVER ON THE ABSENCE OF A MISMATCH. KEY_IDENTITY_OUTCOME_UNSPECIFIED is
+// what a response that populated nothing carries, and a caller reading "not
+// MISMATCH" as a pass would pass on it, on a member added later, and on every
+// transport failure besides. A gate that skips itself when it cannot reach its
+// answer is bypassable by timing, which ADR-0764 rejects by name.
+enum KeyIdentityOutcome {
+  // Never sent. A caller receiving it treats it as a fault and has NOT passed
+  // the check.
+  KEY_IDENTITY_OUTCOME_UNSPECIFIED = 0;
+
+  // A marker is stored and it equals the fingerprint presented. From
+  // SetKeyIdentity it additionally means the row was already there, so that
+  // call wrote nothing.
+  KEY_IDENTITY_OUTCOME_MATCH = 1;
+
+  // A marker is stored and it DIFFERS from the fingerprint presented. The key
+  // set in use cannot be the one these rows were encrypted under. Permanent:
+  // no restart, no retry and no wait changes it.
+  KEY_IDENTITY_OUTCOME_MISMATCH = 2;
+
+  // No marker is stored. GetKeyIdentity ONLY — the first boot of an empty
+  // installation, and the one case in which recording one is correct.
+  KEY_IDENTITY_OUTCOME_ABSENT = 3;
+
+  // The marker was absent and the recording call wrote it. SetKeyIdentity
+  // ONLY, and a REPLAY of that call under its original key answers RECORDED
+  // again rather than MATCH — D9's ordinary rule, that a replay returns the
+  // ORIGINAL outcome, exactly as RedeemEnrolment replays REDEEMED rather than
+  // reporting the secret it spent as SPENT.
+  //
+  // Distinct from MATCH so that an operator reading `iam`'s log can tell a
+  // genuinely empty store from one that already agreed: a restored database
+  // that lost its marker is a different incident from a fresh install, and
+  // only this member separates them.
+  KEY_IDENTITY_OUTCOME_RECORDED = 4;
+}
+
+// Ask whether this store's rows were encrypted under the key set the caller
+// holds (ADR-0764). The marker behind ADR-0753's ordering rule: `iam-keys` is
+// generated automatically only once `iam` can refuse the wrong one.
+//
+// ONE MARKER FOR THE WHOLE INSTALLATION, never one per user and never one per
+// row. One key set encrypts every encrypted column in this store, so there is
+// one fact to record — and a per-row marker would make ABSENT a per-row answer
+// and fire the first-boot branch against a store that is not empty at all.
+//
+// THE COMPARISON HAPPENS HERE AND THE STORED MARKER NEVER LEAVES. Returning it
+// for the caller to compare would put the ABSENT case back on an empty field —
+// the shape KeyIdentityOutcome exists to delete — and the comparison is byte
+// equality, which needs nothing this boundary does not have. `GetPasswordHash`
+// returns its hash for the opposite reason: Argon2id verification needs the
+// plaintext, which lives only in `iam`.
+//
+// A READ, SO NO `Idempotency` (D9) and no outcome to replay.
+//
+// WHAT THE CALLER DOES WITH EACH ANSWER, stated here because the answer is
+// only half a gate without it. MATCH passes. MISMATCH is permanent, and
+// ADR-0764 has `iam` end its serve and exit non-zero on it. ABSENT is first
+// boot and leads to SetKeyIdentity below. AN RPC FAILURE IS NONE OF THESE: an
+// UNAVAILABLE twin is transient, the caller retries it forever, and the check
+// NEVER PASSES while that lasts. Boot is gated on none of it — ADR-0532 keeps
+// the dial to this service lazy and the check runs as a task afterwards.
+message GetKeyIdentityRequest {
+  // WHAT IDENTIFIES THE KEY SET, computed by `iam`, and OPAQUE TO THIS
+  // BOUNDARY. This service compares these bytes and stores them; it derives
+  // nothing from them and reads no structure in them. The derivation is
+  // `iam`'s, and changing it is a change there rather than here.
+  //
+  // NEVER THE KEY. It is derived one-way from the key set, so a stolen backup
+  // of this store yields nothing that decrypts a row — the same rule the token
+  // hash and the blind index already follow, and the rule that lets the marker
+  // live in the database the keys deliberately do not.
+  //
+  // EMPTY IS REFUSED, with INVALID_ARGUMENT, here and on SetKeyIdentity. THIS
+  // IS THE ONE VALIDATION AND IT IS LOAD-BEARING: `bytes` has no presence in
+  // proto3, so a caller that populates nothing sends empty — and were empty
+  // storable, it would be recorded as a marker and then match itself for ever,
+  // passing the gate with no key material involved at all. Non-empty is the
+  // whole of the rule, deliberately: a length or a format would fix PR 3's
+  // derivation into this contract, and the field is opaque precisely so it
+  // does not.
+  bytes key_fingerprint = 1;
+}
+message GetKeyIdentityResponse {
+  // MATCH, MISMATCH or ABSENT. Never RECORDED — this arm writes nothing.
+  KeyIdentityOutcome outcome = 1;
+}
+
+// Record the marker, ONCE, on the first boot of an empty installation
+// (ADR-0764).
+//
+// **WRITE-ONCE, AND THE REFUSAL TO OVERWRITE IS THE POINT.** A stored marker
+// that differs is answered with MISMATCH and NOTHING IS WRITTEN. An arm that
+// overwrote would hand a pod holding the wrong key the means to make itself
+// pass — record its own fingerprint, agree with itself for ever, and leave the
+// rows it cannot read behind an assertion that they are fine. The gate would
+// then exist and be unable to fail, which is the defect ADR-0764 names.
+//
+// THE COMPARISON AND THE INSERT ARE ONE STATEMENT, one transaction (D5), for
+// the reason RedeemEnrolment states: a read followed by a write is the same
+// race with a longer window. Two replicas rolling out under DIFFERENT key sets
+// can both read ABSENT before either writes. One write wins and the other MUST
+// be told so rather than silently succeeding, or the loser runs on under a key
+// the store no longer agrees with. Because the loser is answered MISMATCH,
+// exactly one key set survives a split rollout and the other pod exits.
+//
+// NO `unverified_actor`, AND UNLIKE SetPassword ABOVE THE EXCLUSION IS NOT
+// ARGUABLE. Every other writing arm on this boundary carries the field because
+// a person somewhere asked for the write and the audit record should say who.
+// Nobody asks for this one: `iam` calls it from its own startup task, against
+// its own key material, with no request in flight and no gateway involved.
+// There is no actor to record, and a field for one would invite an
+// implementation to put something in it.
+message SetKeyIdentityRequest {
+  // D9's key. THE PAYLOAD FOR THE COMPARISON IS `key_fingerprint`, the only
+  // other field of this message — `idempotency` carries the key the comparison
+  // is keyed on. A key replayed carrying a DIFFERENT fingerprint is REFUSED
+  // with INVALID_ARGUMENT by that org-wide rule, and the refusal is right
+  // here: the two calls claim different key sets, so answering the second with
+  // the first's outcome would report a marker this caller does not hold.
+  //
+  // NOT A MEMBER OF ADR-0519's SINGLE-USE-SECRET CARVE-OUT, stated because
+  // `yadgar.common.v1.Idempotency` fixes membership as an ENUMERATION rather
+  // than a test a reader applies. This RPC mints nothing; its outcome is the
+  // stored marker, which the store keeps and can re-derive on demand.
+  //
+  // THE KEY IS THE BELT AND NOT THE BRACES. The verb converges without it: a
+  // retry under a FRESH key finds the marker the first attempt wrote and
+  // answers MATCH, so a lost key costs the RECORDED-versus-MATCH distinction
+  // and nothing else. Write-once is what makes that true — the same way
+  // SetUserAdmin's shape rather than its key is what keeps its retry harmless.
+  yadgar.common.v1.Idempotency idempotency = 1;
+
+  // The same fingerprint GetKeyIdentityRequest carries, under the same rules:
+  // computed by `iam`, opaque here, never the key, and EMPTY IS REFUSED with
+  // INVALID_ARGUMENT.
+  bytes key_fingerprint = 2;
+}
+message SetKeyIdentityResponse {
+  // RECORDED when this call wrote the marker, MATCH when one was already
+  // stored and agreed, MISMATCH when one was already stored and differed — in
+  // which case this call wrote nothing. Never ABSENT: once this arm has
+  // answered anything but an error, a marker exists either way.
+  KeyIdentityOutcome outcome = 1;
+}
+
 service IamDbService {
   rpc ResolveCredential(ResolveCredentialRequest) returns (ResolveCredentialResponse);
   rpc GetPasswordHash(GetPasswordHashRequest) returns (GetPasswordHashResponse);
@@ -779,4 +942,6 @@ service IamDbService {
   rpc AddTeamMember(AddTeamMemberRequest) returns (AddTeamMemberResponse);
   rpc RemoveTeamMember(RemoveTeamMemberRequest) returns (RemoveTeamMemberResponse);
   rpc SetInheritedSetting(SetInheritedSettingRequest) returns (SetInheritedSettingResponse);
+  rpc GetKeyIdentity(GetKeyIdentityRequest) returns (GetKeyIdentityResponse);
+  rpc SetKeyIdentity(SetKeyIdentityRequest) returns (SetKeyIdentityResponse);
 }
