@@ -977,8 +977,11 @@ message GetKeyIdentityResponse {
   KeyIdentityOutcome outcome = 1;
 }
 
-// Record the marker, ONCE, on the first boot of an empty installation
-// (ADR-0764).
+// Record the marker, ONCE, AND ONLY WHERE THIS STORE HOLDS NEITHER A MARKER
+// NOR ANY ROWS (ADR-0764). "The first boot of an empty installation" is the
+// intent and is deliberately not the wording: this service cannot see an
+// installation, it can see its own rows, and the gap between those two facts
+// is the whole of what the refusal below enforces.
 //
 // **WRITE-ONCE, AND THE REFUSAL TO OVERWRITE IS THE POINT.** A stored marker
 // that differs is answered with MISMATCH and NOTHING IS WRITTEN. An arm that
