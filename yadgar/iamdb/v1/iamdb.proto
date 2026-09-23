@@ -832,7 +832,10 @@ enum KeyIdentityOutcome {
   // REFUSES TO RECORD WHEN THE STORE ALREADY HOLDS ROWS. That refusal is a
   // gRPC status and needs no member here, because a non-OK status is
   // not-passed by the rule stated above. SetKeyIdentity carries it, and it is
-  // the ONLY refusal that arm puts on the status channel — a derivation skew is
+  // the ONLY refusal ABOUT THE STORED MARKER that arm puts on the status
+  // channel — that arm also refuses a MALFORMED REQUEST with INVALID_ARGUMENT,
+  // which is a fact about the request rather than about the marker. A
+  // derivation skew is
   // DERIVATION_SKEW below, an OK response carrying a member. The two are
   // therefore told apart by CHANNEL before a caller looks at any value, which
   // is the whole point of ADR-0765 moving one of them and not the other.
@@ -941,9 +944,12 @@ enum KeyIdentityOutcome {
 // and the check never passes while that lasts. A PERMANENT status is the case
 // the retry loop cannot mend, and on THIS arm UNIMPLEMENTED is the only one to
 // expect — an `iam-db` deployed from an earlier tag does not carry this arm at
-// all and answers it to every call. This arm is a read and refuses nothing
-// else; the one refusal on the whole key-identity pair belongs to
-// SetKeyIdentity below, which states it. A VERSION SKEW IS NOT AMONG THESE
+// all and answers it to every call. This arm is a read and REFUSES NOTHING
+// ABOUT THE STORED MARKER — it still refuses a MALFORMED REQUEST, with
+// INVALID_ARGUMENT, by the two presence rules its fields state, and that is a
+// fact about the request rather than about the marker. The one refusal about
+// the marker on the whole key-identity pair belongs to SetKeyIdentity below,
+// which states it. A VERSION SKEW IS NOT AMONG THESE
 // STATUSES and never was a status: ADR-0765 makes it the member named above, on
 // an OK response, precisely so a caller separates "the comparison found
 // something" from "the comparison could not be made" by channel. Retrying a
@@ -1035,9 +1041,11 @@ message GetKeyIdentityResponse {
   // MATCH, MISMATCH, ABSENT or DERIVATION_SKEW — a stored `derivation_version`
   // that differs from the one presented is a member here rather than a status,
   // so this arm answers OK and states the finding. Never RECORDED — this arm
-  // writes nothing. This arm puts NO refusal on the status channel at all, so
-  // any non-OK answer to it is a transport or deployment fault rather than a
-  // fact about the marker.
+  // writes nothing. This arm puts NO REFUSAL ABOUT THE MARKER on the status
+  // channel, so a non-OK answer to it is never a finding: it is a malformed
+  // request refused with INVALID_ARGUMENT by the two presence rules the fields
+  // state, or a transport or deployment fault. None of the three is a fact
+  // about what the store holds.
   KeyIdentityOutcome outcome = 1;
 }
 
@@ -1081,8 +1089,14 @@ message GetKeyIdentityResponse {
 // now name, and recording whichever fingerprint arrives first would assert an
 // identity about all of them on no evidence at all.
 //
-// THIS IS THE ONLY REFUSAL THIS ARM PUTS ON THE STATUS CHANNEL, and that is
-// what makes FAILED_PRECONDITION unambiguous here. An earlier round gave this
+// THIS IS THE ONLY REFUSAL ABOUT THE STORED MARKER THIS ARM PUTS ON THE STATUS
+// CHANNEL, and that is what makes FAILED_PRECONDITION unambiguous here. The
+// arm's other refusals are about the REQUEST rather than the marker and all
+// carry INVALID_ARGUMENT: an empty `key_fingerprint`, a zero
+// `derivation_version`, and D9's replay of a key under a different payload. A
+// caller that cannot tell a bad request from a bad store has a different
+// problem, and that separation is why one code can serve three request faults
+// while the store's own refusal keeps its own. An earlier round gave this
 // refusal and a version skew the SAME status on the argument that they are one
 // operational fact — this is not a first boot — with two detections. ADR-0765
 // OVERTURNS THAT. The two are now distinguished as far as this boundary can
@@ -1166,7 +1180,9 @@ message SetKeyIdentityResponse {
   //
   // THE ONE REFUSAL STATED ABOVE — a store that already holds rows — is
   // FAILED_PRECONDITION and reaches no member of this enum. It is the only
-  // refusal on this arm's status channel. A version skew used to sit beside it
+  // refusal ABOUT THE STORED MARKER on this arm's status channel; the arm's
+  // three request faults are INVALID_ARGUMENT and say nothing about the store.
+  // A version skew used to sit beside it
   // there and no longer does: ADR-0765 makes it the member named above, so the
   // two cases that both mean "this is not a first boot" are told apart BY
   // CHANNEL, one an OK response and one a status, rather than by reading a
