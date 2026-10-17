@@ -58,6 +58,14 @@ above `ProjectService` in that file carries the reasoning.
   failed will "fix" it by writing a duplicate.
 - **Every update carries `expect_version`** (D8). Mismatch is
   `FAILED_PRECONDITION`; the caller re-reads, recomputes, retries.
+- **One exception to both rules: `SyncProjects`** (`yadgar/project/v1`,
+  ADR-0936). It carries no `Idempotency` and no `expect_version`. The verb is
+  idempotent by convergence: the same declaration applied twice changes nothing
+  the second time. A D9 key would be wrong, not redundant: after a database
+  restore, a replayed key returns the stored response and skips the convergence
+  the restore needs. And the caller holds a declaration, not a row it read, so
+  it has no version to expect. The store serialises concurrent syncs with a
+  lock on a sentinel row instead.
 - **A write returns `Meta`, never the entity** (D48). The caller sent the content;
   what it cannot know is the assigned id, version and timestamps. `adr` and `task`
   add `number`, for the same reason. Echoing the body charges an agent client twice

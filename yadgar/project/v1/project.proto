@@ -17,8 +17,7 @@ enum ProjectStatus {
   // keeps its path and aliases, and resolution still answers it, with this
   // status — see `RegisteredPath.status`, which must stay unfiltered.
   //
-  // AN ARCHIVED PROJECT REFUSES WRITES (Max's ruling of 2026-10-17 on question
-  // Q3 of `plans/the-d35-seeder.md`). A caller that resolves a candidate for a
+  // AN ARCHIVED PROJECT REFUSES WRITES (ADR-0941). A caller that resolves a candidate for a
   // WRITE and gets this status refuses the write; a READ still answers. The
   // refusal belongs to whoever composes the write's refusal — the gateway —
   // and NOT to this contract, which carries the status and no reason code.
@@ -84,14 +83,13 @@ message RegisterProjectRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   yadgar.common.v1.Scope scope = 2;
   string path = 3;
-  // Refused past 255, enforced in BYTES today
-  // (`project-db/src/write.rs:58,116`, `MAX_DISPLAY_NAME`) against a column
-  // that is `display_name VARCHAR(255)` on utf8mb4 and so bounds CHARACTERS
-  // (`project-db/src/schema.rs:78`) — the same byte/character gap `iam` found
-  // and fixed on its own VARCHAR(255)-on-utf8mb4 columns, see
-  // `yadgar.iam.v1.LoginRequest.label` and
-  // `yadgar.iam.v1.CreateUserRequest.external_id` in `iam.proto`. Stated here
-  // as what the code does, not as a character bound, because it is not one.
+  // Refused past 255 CHARACTERS (`project-db/src/write/register.rs`,
+  // `MAX_DISPLAY_NAME_CHARS`), counted as Unicode scalars, because the column
+  // is `display_name VARCHAR(255)` on utf8mb4 and so bounds CHARACTERS, not
+  // bytes (`project-db/src/schema.rs`, `create_project`). This closes the
+  // byte/character gap the check once had, the same gap `iam` fixed on its own
+  // VARCHAR(255)-on-utf8mb4 columns: see `yadgar.iam.v1.LoginRequest.label`
+  // and `yadgar.iam.v1.CreateUserRequest.external_id` in `iam.proto`.
   string display_name = 4;
 
   // The repository whose PR flow governs an ORG namespace — NOT `path`,
@@ -261,7 +259,8 @@ message SyncProjectsRequest {
   // `user_id` is the seeder's fixed system principal, stamped as `created_by`
   // and `updated_by` on every row the sync writes. `project` has checked it
   // against the caller's certificate before relaying (see
-  // `ProjectServiceSyncProjectsRequest.scope`).
+  // `ProjectServiceSyncProjectsRequest.scope`). `request_id` is the one the
+  // seeder minted for this sync, relayed unchanged.
   yadgar.common.v1.Scope scope = 1;
 
   // The namespace anchors: single-segment paths, resolvable through and never
@@ -276,8 +275,8 @@ message SyncProjectsRequest {
   // it states that the organisation has only its anchors.
   repeated DeclaredProject projects = 3;
 
-  // THE MASS-ARCHIVE GUARD (Max's ruling of 2026-10-17 on question Q1 of
-  // `plans/the-d35-seeder.md`). False by default, and false is the guard ON.
+  // THE MASS-ARCHIVE GUARD (ADR-0939). False by default, and false is the
+  // guard ON.
   //
   // With this false, a sync that would archive STRICTLY MORE THAN HALF of the
   // org-class rows that are ACTIVE when the sync takes its lock is refused
@@ -595,6 +594,12 @@ message ProjectServiceSyncProjectsRequest {
   // principal are checked together, and neither one is trusted alone. The
   // store needs the Scope because it stamps `created_by` and `updated_by`
   // from it.
+  //
+  // `request_id` IS THE SECOND EXCEPTION, for the same reason. `Scope` says
+  // the gateway mints it, once, and there is no gateway on this path. So the
+  // seeder mints its own `request_id`, one per sync, and sends it here;
+  // `project` relays it unchanged to the store, so D67's records for one sync
+  // still join across both hops.
   yadgar.common.v1.Scope scope = 1;
   repeated DeclaredProject roots = 2;
   repeated DeclaredProject projects = 3;
