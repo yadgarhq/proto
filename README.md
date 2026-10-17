@@ -58,12 +58,27 @@ above `ProjectService` in that file carries the reasoning.
   failed will "fix" it by writing a duplicate.
 - **Every update carries `expect_version`** (D8). Mismatch is
   `FAILED_PRECONDITION`; the caller re-reads, recomputes, retries.
+- **One exception to both rules: `SyncProjects`** (`yadgar/project/v1`,
+  ADR-0936). It carries no `Idempotency` and no `expect_version`. The verb is
+  idempotent by convergence: the same declaration applied twice changes nothing
+  the second time. A D9 key would be wrong, not redundant: after a database
+  restore, a replayed key returns the stored response and skips the convergence
+  the restore needs. And the caller holds a declaration, not a row it read, so
+  it has no version to expect. The store serialises concurrent syncs with a
+  lock on a sentinel row instead.
 - **A write returns `Meta`, never the entity** (D48). The caller sent the content;
   what it cannot know is the assigned id, version and timestamps. `adr` and `task`
   add `number`, for the same reason. Echoing the body charges an agent client twice
-  for bytes it already holds.
+  for bytes it already holds. Exception: `SyncProjects` writes many rows in one
+  call and returns five counts (inserted, updated, archived, reactivated,
+  unchanged) instead of a `Meta`.
 - **`Scope` is attested, never self-declared.** The gateway derives it from the
   request's credentials. A caller cannot claim a `team_id` it is not in.
+  Exception: `SyncProjects` (ADR-0942, open). Its caller is the seeder, and no
+  gateway is on that path. The seeder sends a fixed principal,
+  `yadgar:system:seeder`, and a `request_id` it mints per sync. `project`
+  checks the principal against the seeder's client certificate. `project_id`,
+  `team_ids` and `instance_id` are empty and ignored.
 - **Batch reads exist on every module** so a fanout never becomes an N+1 across
   the network — the specific risk D5's coarse-API rule exists to prevent. Their limit
   is **derived from bytes, not declared as a count** (D56): gRPC's 4 MB default message
