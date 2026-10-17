@@ -261,8 +261,7 @@ message SyncProjectsRequest {
   // `user_id` is the seeder's fixed system principal, stamped as `created_by`
   // and `updated_by` on every row the sync writes. `project` has checked it
   // against the caller's certificate before relaying (see
-  // `ProjectServiceSyncProjectsRequest.scope`). `request_id` is minted by the
-  // seeder, once per sync, and carried unchanged across both hops (D67).
+  // `ProjectServiceSyncProjectsRequest.scope`).
   yadgar.common.v1.Scope scope = 1;
 
   // The namespace anchors: single-segment paths, resolvable through and never
