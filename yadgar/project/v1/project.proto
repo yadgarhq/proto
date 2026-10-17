@@ -17,8 +17,8 @@ enum ProjectStatus {
   // keeps its path and aliases, and resolution still answers it, with this
   // status — see `RegisteredPath.status`, which must stay unfiltered.
   //
-  // AN ARCHIVED PROJECT REFUSES WRITES (ADR-0941). A caller that resolves a candidate for a
-  // WRITE and gets this status refuses the write; a READ still answers. The
+  // AN ARCHIVED PROJECT REFUSES WRITES (ADR-0941, open). A caller that
+  // resolves a candidate for a WRITE and gets this status refuses the write; a READ still answers. The
   // refusal belongs to whoever composes the write's refusal — the gateway —
   // and NOT to this contract, which carries the status and no reason code.
   // Stated here because no code enforces it yet: today neither resolver
@@ -256,11 +256,13 @@ message DeclaredProject {
 // concurrent syncs instead: each one locks a sentinel row that always exists,
 // so two first syncs into an empty store cannot both proceed.
 message SyncProjectsRequest {
-  // `user_id` is the seeder's fixed system principal, stamped as `created_by`
-  // and `updated_by` on every row the sync writes. `project` has checked it
-  // against the caller's certificate before relaying (see
-  // `ProjectServiceSyncProjectsRequest.scope`). `request_id` is the one the
-  // seeder minted for this sync, relayed unchanged.
+  // THE SEEDER'S SCOPE (ADR-0942, open), not a gateway-attested one.
+  // `user_id` is the seeder's fixed system principal, `yadgar:system:seeder`,
+  // stamped as `created_by` and `updated_by` on every row the sync writes.
+  // `project` has checked it against the caller's certificate before relaying
+  // (see `ProjectServiceSyncProjectsRequest.scope`). `request_id` is the one
+  // the seeder minted for this sync, relayed unchanged. project_id, team_ids
+  // and instance_id are empty and ignored.
   yadgar.common.v1.Scope scope = 1;
 
   // The namespace anchors: single-segment paths, resolvable through and never
@@ -275,8 +277,8 @@ message SyncProjectsRequest {
   // it states that the organisation has only its anchors.
   repeated DeclaredProject projects = 3;
 
-  // THE MASS-ARCHIVE GUARD (ADR-0939). False by default, and false is the
-  // guard ON.
+  // THE MASS-ARCHIVE GUARD (ADR-0939, open). False by default, and false is
+  // the guard ON.
   //
   // With this false, a sync that would archive STRICTLY MORE THAN HALF of the
   // org-class rows that are ACTIVE when the sync takes its lock is refused
@@ -584,12 +586,13 @@ message ProjectServiceResolveProjectResponse {
 // `RPC_REQUEST_RESPONSE_UNIQUE` requires one per rpc.
 message ProjectServiceSyncProjectsRequest {
   // A Scope ON THIS TIER, which `ListProjects` and `ResolveProject` above do
-  // not carry, and the difference is the caller. ADR-0488 mints a Scope once,
-  // at the gateway, out of a request; those two rpcs are called by the gateway
-  // while it has none to pass. This rpc is never called by the gateway (see
-  // the caller rule on the rpc). Its caller is the seeder, which holds no user
-  // and no request, so this Scope carries no attested user: `user_id` is the
-  // seeder's FIXED SYSTEM PRINCIPAL, and `project` refuses it
+  // not carry, and the difference is the caller (ADR-0942, open). ADR-0488 as
+  // superseded by ADR-0511 mints a Scope once, at the gateway, out of a
+  // request; those two rpcs are called by the gateway while it has none to
+  // pass. This rpc is never called by the gateway (see the caller rule on the
+  // rpc). Its caller is the seeder, which holds no user and no request, so this
+  // Scope carries no attested user: `user_id` is the seeder's FIXED SYSTEM
+  // PRINCIPAL, `yadgar:system:seeder`, and `project` refuses it
   // `PERMISSION_DENIED` when it is anything else. The certificate and the
   // principal are checked together, and neither one is trusted alone. The
   // store needs the Scope because it stamps `created_by` and `updated_by`
@@ -600,6 +603,8 @@ message ProjectServiceSyncProjectsRequest {
   // seeder mints its own `request_id`, one per sync, and sends it here;
   // `project` relays it unchanged to the store, so D67's records for one sync
   // still join across both hops.
+  //
+  // project_id, team_ids and instance_id are empty and ignored.
   yadgar.common.v1.Scope scope = 1;
   repeated DeclaredProject roots = 2;
   repeated DeclaredProject projects = 3;
