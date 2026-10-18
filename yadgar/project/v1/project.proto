@@ -408,7 +408,8 @@ service ProjectDbService {
 // not.
 // ---------------------------------------------------------------------------
 
-// One registered path, and the three fields a resolution walk reads.
+// One registered path, and the fields a resolution walk reads: the path, its
+// status, its aliases, and the owner of a private row.
 //
 // NOT `Project`, AND THE DEVIATION IS RULED RATHER THAN PREFERRED.
 // `plans/project-registry-callers.md` §1 names what the load returns — "every
@@ -437,6 +438,21 @@ message RegisteredPath {
   // reason (`project-db/src/read.rs`); a walk over this set is the same walk
   // and needs the same two inputs.
   repeated string aliases = 3;
+
+  // The registrant of a PRIVATE-class row (`local/...`) — the user who may
+  // resolve it. A private row is visible to its owner alone.
+  //
+  // EMPTY ON EVERY ORG ROW, and the class is read from `path`, NOT from this
+  // field. A caller decides whether a row is organisation or private by the
+  // shape of `path` (`local/...` is private, anything else is org), never by
+  // whether this is set. An empty value on a private row means this store
+  // predates the column being relayed; a caller MUST NOT infer org class from
+  // it. proto3 gives a bare `string` no presence bit, so empty means absent,
+  // not unknown.
+  //
+  // The same value as `Meta.owner_user_id`; `project-db`'s `ck_project_class`
+  // CHECK makes it and `source_repo` mutually exclusive on the underlying row.
+  string owner_user_id = 4;
 }
 
 // The registry LOAD: every registered path, so a caller answers "what does this
