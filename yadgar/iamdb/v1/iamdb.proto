@@ -483,6 +483,52 @@ message RevokeCredentialResponse {
   string user_id = 1;
 }
 
+// Revoke EVERY live credential one user holds, in one transaction (ADR-0945).
+// It is ADR-0943's alternative (d): the standalone form of the revoke a
+// revoking re-enrolment performs at redemption, for the caller who must
+// contain a leaked token NOW rather than at the person's next redemption.
+//
+// IT TOMBSTONES AND NEVER DELETES (D26), with the SAME STATEMENT the ADR-0943
+// redemption revoke uses: lock the user row FOR UPDATE, then set `revoked_at`
+// on every `iam_credential` row of the user where `revoked_at IS NULL`. The lock
+// is what makes it race-safe against CreateCredential, exactly as it is there.
+//
+// `revoked` COUNTS THE ROWS THIS CALL CHANGED, so a replay, or a user with no
+// live credential, answers 0. Zero is a success and not an error. An UNKNOWN
+// USER — no `iam_user` row for `user_id` — is NOT_FOUND.
+//
+// IT DOES NOT CHANGE THE PASSWORD AND DOES NOT STOP LOGIN. The person can log
+// in again afterwards and mint a new credential; this verb contains the tokens
+// that exist now and nothing more. A leaked password is a different threat.
+//
+// WHO MAY CALL IT is the gateway's policy rather than contract shape (ADR-0945),
+// exactly as it is for RevokeCredential: the gateway is the one place identity
+// is attested (ADR-0488), and this service cannot verify the actor it is told.
+//
+// `idempotency` is carried for the shape every write on this boundary has, but
+// THIS SERVICE DOES NOT YET HONOUR IT (ledger 668): the answer to a redelivery
+// comes from the statement being convergent, which is why the replay count is
+// 0. A redelivery after the person logs in again revokes that new credential.
+message RevokeAllCredentialsRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  string user_id = 2;
+
+  // WHO THE GATEWAY BELIEVED WAS CALLING, FOR THE AUDIT RECORD ONLY. This
+  // service cannot verify it and MUST NOT authorise on it. The rule is stated
+  // once, on yadgar.common.v1.UnverifiedActor, rather than restated here.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 3;
+}
+message RevokeAllCredentialsResponse {
+  // Who it was, so the caller can publish the invalidation event (D72) without
+  // a second read — the same reason RevokeCredentialResponse carries it. A
+  // revocation whose cache event never fires is a credential that keeps
+  // working.
+  string user_id = 1;
+
+  // The number of credential rows THIS CALL changed. A replay answers 0.
+  uint32 revoked = 2;
+}
+
 // The read behind yadgar.iam.v1.ListCredentials, and the only RPC on this
 // boundary that returns a `Credential` — that message was declared with the
 // other storage shapes and read by nothing until this arm existed. Its caller
@@ -1239,6 +1285,7 @@ service IamDbService {
   rpc RedeemEnrolment(RedeemEnrolmentRequest) returns (RedeemEnrolmentResponse);
   rpc CreateCredential(CreateCredentialRequest) returns (CreateCredentialResponse);
   rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+  rpc RevokeAllCredentials(RevokeAllCredentialsRequest) returns (RevokeAllCredentialsResponse);
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc SetUserAdmin(SetUserAdminRequest) returns (SetUserAdminResponse);

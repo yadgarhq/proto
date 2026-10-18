@@ -503,6 +503,44 @@ message RevokeCredentialRequest {
 }
 message RevokeCredentialResponse {}
 
+// Revoke EVERY live credential one user holds, in one transaction (ADR-0945).
+// It is ADR-0943's alternative (d): the standalone form of the revoke a
+// revoking re-enrolment performs at redemption, for the caller who must
+// contain a leaked token NOW rather than at the person's next redemption.
+//
+// IT TOMBSTONES AND NEVER DELETES (D26), with the SAME STATEMENT the ADR-0943
+// redemption revoke uses: `iam-db` locks the user row FOR UPDATE, then sets
+// `revoked_at` on every live credential of the user. `iam` validates `user_id`
+// and relays the actor; it holds no store (D4).
+//
+// `revoked` COUNTS THE ROWS THIS CALL CHANGED, so a replay answers 0. Zero is
+// a success and not an error. An UNKNOWN USER is NOT_FOUND.
+//
+// IT DOES NOT CHANGE THE PASSWORD AND DOES NOT STOP LOGIN. The person can log
+// in again afterwards and mint a new credential; this verb contains the tokens
+// that exist now and nothing more.
+//
+// WHO MAY CALL IT is the gateway's policy rather than contract shape
+// (ADR-0945), exactly as it is for RevokeCredential: the gateway is the one
+// place identity is attested (ADR-0488).
+//
+// `idempotency` is carried for the shape every write here has, but `iam-db`
+// DOES NOT YET HONOUR IT (ledger 668). A redelivery after the person logs in
+// again revokes that new credential.
+message RevokeAllCredentialsRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+  string user_id = 2;
+
+  // WHO THE GATEWAY BELIEVED WAS CALLING, FOR THE AUDIT RECORD ONLY. This
+  // service cannot verify it and MUST NOT authorise on it. The rule is stated
+  // once, on yadgar.common.v1.UnverifiedActor, rather than restated here.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 3;
+}
+message RevokeAllCredentialsResponse {
+  // The number of credential rows THIS CALL changed. A replay answers 0.
+  uint32 revoked = 1;
+}
+
 // A credential as the person holding it sees one: enough to tell two apart and
 // to name one for revocation.
 //
@@ -1032,6 +1070,7 @@ service IamService {
 
   rpc IssueCredential(IssueCredentialRequest) returns (IssueCredentialResponse);
   rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+  rpc RevokeAllCredentials(RevokeAllCredentialsRequest) returns (RevokeAllCredentialsResponse);
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
   rpc IssueEnrolment(IssueEnrolmentRequest) returns (IssueEnrolmentResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
