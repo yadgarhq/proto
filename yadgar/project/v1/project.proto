@@ -21,9 +21,10 @@ enum ProjectStatus {
   // resolves a candidate for a WRITE and gets this status refuses the write; a READ still answers. The
   // refusal belongs to whoever composes the write's refusal — the gateway —
   // and NOT to this contract, which carries the status and no reason code.
-  // The gateway enforces it: since gateway v0.12.10 (gateway#118, ledger 1612)
-  // it refuses, or under counting counts, a write to an archived project. The
-  // resolvers still do not refuse on status.
+  // Since gateway v0.12.10 (gateway#118, ledger 1612) the gateway classifies a
+  // write to an archived project as `PROJECT_ARCHIVED`. Under `enforcing` it
+  // refuses the write. Under `counting`, the live mode (ADR-0841), it counts
+  // the write and the write still lands. The resolvers do not refuse on status.
   PROJECT_STATUS_ARCHIVED = 2;
 }
 
@@ -336,8 +337,9 @@ message SyncProjectsResponse {
 // `project-db` v0.7.0, which serves `SyncProjects`, it refuses an org-class
 // path here with `FAILED_PRECONDITION`, so the two writers are disjoint by
 // `ck_project_class`, the engine's own constraint. Since `project-db` v0.8.0
-// (ADR-0954) it also refuses a `local/<account>/...` path whose segment is not
-// the caller's own. No module calls it. An
+// (ADR-0954) it also refuses, with `PERMISSION_DENIED`, a `local/<seg>/...` path
+// whose `<seg>` is not the registrant's `scope.user_id` with `yadgar:user:`
+// removed (its lowercase uuidv7). No module calls it. An
 // operator port-forward to it is break-glass: exempt under ADR-0938 only while
 // a human starts it, no code path runs it, and no standing route makes it
 // reachable. It is not a registration path for any module.
@@ -472,7 +474,7 @@ message RegisteredPath {
   // SENT ONLY TO THE GATEWAY. Since `project` v0.4.0 (ledger 1643),
   // `ProjectService.ListProjects` admits one caller: the leaf must name exactly
   // `gateway-caller`. Any other workload is refused before the relay, so only
-  // the gateway receives the owner ids.
+  // the gateway, of `ProjectService`'s callers, receives the owner ids.
   string owner_user_id = 4;
 }
 
