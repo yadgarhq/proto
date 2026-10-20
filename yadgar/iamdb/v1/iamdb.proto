@@ -175,7 +175,8 @@ message ResolveCredentialResponse {
   // this is present on a live answer it is in the future.
   //
   // ABSENT ON A LIVE ANSWER MEANS THE ROW HAS NO EXPIRY: a credential minted
-  // before ADR-0972 (3), which is not backfilled. `iam` then keeps 300. Absent
+  // before ADR-0972 (3), which is not backfilled, or an IssueCredential mint
+  // with expires_in_seconds 0. `iam` then keeps 300. Absent
   // on the negative answer (empty `user_id`) too, where it means nothing. An
   // `iam-db` too old to set it leaves it absent, which an `iam` reads as "no
   // expiry" and caches for 300 — today's behaviour, not a new exposure. An old
@@ -219,6 +220,11 @@ message GetPasswordHashResponse {
   // That is safe ONLY because such an `iam-db` also ignores
   // `expected_credential_epoch`, so the mint stays unchecked, as today. 0 and
   // meaningless when `user_id` is empty.
+  //
+  // MID-ROLL, WITH OLD AND NEW `iam-db` REPLICAS ON ONE DATABASE, an old
+  // replica can answer this read with 0 while the stored epoch is above 0, and
+  // a new replica then refuses the mint: a transient, spurious refusal that
+  // fails closed. The person logs in again once the roll completes.
   uint64 credential_epoch = 3;
 }
 
@@ -368,11 +374,11 @@ message CreateEnrolmentResponse {
 // What a redemption attempt actually was.
 //
 // THE SERVER DISTINGUISHES THESE AND THE CALLER MUST NOT. They arrive as a
-// field on a successful response rather than as four different errors, which is
+// field on a successful response rather than as separate errors, which is
 // the shape ResolveCredentialResponse already uses for "no live credential
 // matched" and for the same reason: "this secret was already spent" and "the
-// store is broken" are different outcomes, and only the first three are safe to
-// collapse. `iam` collapses NOT_FOUND, SPENT and EXPIRED into one
+// store is broken" are different outcomes, and only the refusal outcomes are
+// safe to collapse. `iam` collapses NOT_FOUND, SPENT, EXPIRED and VOIDED into one
 // UNAUTHENTICATED before the answer leaves the deployment, and records which of
 // them it was.
 enum RedeemOutcome {
@@ -381,6 +387,15 @@ enum RedeemOutcome {
   REDEEM_OUTCOME_NOT_FOUND = 2;
   REDEEM_OUTCOME_SPENT = 3;
   REDEEM_OUTCOME_EXPIRED = 4;
+
+  // The enrolment was voided before it was redeemed (ADR-0972 (5)): a
+  // revoking redemption or RevokeAllCredentials set its `voided_at`. `iam`
+  // collapses it into the same single UNAUTHENTICATED refusal as NOT_FOUND,
+  // SPENT and EXPIRED, inside the same floor, and records which it was. An
+  // `iam` built before ADR-0972 (5) reads this value as UNSPECIFIED and gives
+  // that same refusal, because it refuses every outcome other than
+  // REDEEM_OUTCOME_REDEEMED.
+  REDEEM_OUTCOME_VOIDED = 5;
 }
 
 // Spend an enrolment AND set the password, in ONE transaction (D5).
@@ -436,6 +451,12 @@ message RedeemEnrolmentRequest {
   // that axis is checked in `iam` and this one is checked here. THE COMPARISON
   // PRECEDES THE LOOKUP of the presented secret, or the refusal itself reports
   // whether that secret exists.
+  //
+  // TWO RESPONSE FIELDS ARE NOT THE ORIGINAL OUTCOME ON A REPLAY (ADR-0972).
+  // `credential_epoch` is the user's CURRENT epoch, read inside the replay's
+  // transaction, because the first delivery's value may be stale.
+  // `voided_enrolments` is 0, because it counts what this delivery changed and
+  // a replay changes nothing. See each field.
   //
   // THE CREDENTIAL IS NOT COVERED BY THIS KEY. See that same field for why it
   // cannot be.
@@ -553,6 +574,11 @@ message CreateCredentialRequest {
   // IssueCredential sends none. OPTIONAL BECAUSE 0 IS A REAL EPOCH, so
   // presence and not value says whether to check.
   //
+  // An `iam` that implements ADR-0972 (4) ALWAYS sets it on Login and
+  // RedeemEnrolment mints. Absent is legitimate only from IssueCredential or
+  // from an `iam` built before ADR-0972 (4). `iam-db` cannot tell the paths
+  // apart, so setting it is the caller's obligation.
+  //
   // MIXED VERSIONS. An `iam` built before ADR-0972 (4) never sets this, so its
   // mints stay unchecked against a new `iam-db`. An `iam-db` built before it
   // ignores the field, so a new `iam`'s mints are unchecked against it.
@@ -582,9 +608,12 @@ message RevokeCredentialRequest {
   // already revoked answers OK and changes nothing, as today.
   //
   // MIXED VERSIONS. An `iam-db` built before ADR-0972 (2) ignores this field
-  // and revokes by id alone. A new `iam-db` refuses an `iam` too old to send
-  // it; no gateway route reaches RevokeCredential until the gateway release
-  // that adds one, which ships after the `iam` that relays this field.
+  // and revokes by id alone. A new `iam-db` refuses, with INVALID_ARGUMENT, an
+  // `iam` too old to send it. That happens while old and new `iam` replicas
+  // overlap during a roll, and after an image rollback of `iam` alone while
+  // `iam-db` stays new. The refusal FAILS CLOSED: the verb is admin-only, and
+  // the wrong credential is never revoked. The operator retries once every
+  // `iam` replica relays the field.
   string user_id = 4;
 }
 message RevokeCredentialResponse {
