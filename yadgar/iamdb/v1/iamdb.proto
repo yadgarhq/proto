@@ -452,13 +452,14 @@ message RedeemEnrolmentRequest {
   // PRECEDES THE LOOKUP of the presented secret, or the refusal itself reports
   // whether that secret exists.
   //
-  // TWO RESPONSE FIELDS ARE NOT THE ORIGINAL OUTCOME ON A REPLAY (ADR-0972).
-  // `credential_epoch` is the epoch recorded when the redemption FIRST
-  // committed, read from the ledger row (ADR-0976), and NOT the user's current
-  // epoch. Answering the current epoch would let a replayed key mint through a
-  // later revoke-all, revoking reset or password set.
+  // ONE RESPONSE FIELD IS NOT THE ORIGINAL OUTCOME ON A REPLAY:
   // `voided_enrolments` is 0, because it counts what this delivery changed and
-  // a replay changes nothing. See each field.
+  // a replay changes nothing (ADR-0972).
+  // `credential_epoch` IS the original value: the epoch recorded when the
+  // redemption FIRST committed, read from the ledger row (ADR-0976), and NOT
+  // the user's current epoch. Answering the current epoch would let a replayed
+  // key mint through a later revoke-all, revoking reset or password set. Rows
+  // from before migration 18 answer 0. See each field.
   //
   // THE CREDENTIAL IS NOT COVERED BY THIS KEY. See that same field for why it
   // cannot be.
