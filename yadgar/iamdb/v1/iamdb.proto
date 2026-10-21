@@ -452,11 +452,14 @@ message RedeemEnrolmentRequest {
   // PRECEDES THE LOOKUP of the presented secret, or the refusal itself reports
   // whether that secret exists.
   //
-  // TWO RESPONSE FIELDS ARE NOT THE ORIGINAL OUTCOME ON A REPLAY (ADR-0972).
-  // `credential_epoch` is the user's CURRENT epoch, read inside the replay's
-  // transaction, because the first delivery's value may be stale.
+  // ONE RESPONSE FIELD IS NOT THE ORIGINAL OUTCOME ON A REPLAY:
   // `voided_enrolments` is 0, because it counts what this delivery changed and
-  // a replay changes nothing. See each field.
+  // a replay changes nothing (ADR-0972).
+  // `credential_epoch` IS the original value: the epoch recorded when the
+  // redemption FIRST committed, read from the ledger row (ADR-0976), and NOT
+  // the user's current epoch. Answering the current epoch would let a replayed
+  // key mint through a later revoke-all, revoking reset or password set. Rows
+  // from before migration 18 answer 0. See each field.
   //
   // THE CREDENTIAL IS NOT COVERED BY THIS KEY. See that same field for why it
   // cannot be.
@@ -519,10 +522,15 @@ message RedeemEnrolmentResponse {
   // own credential, so that credential is minted under the new epoch and a
   // concurrent second reset or revoke-all refuses it.
   //
-  // A REPLAY RETURNS THE USER'S CURRENT EPOCH, read inside the replay's
-  // transaction, and NOT the first delivery's value. A first delivery's value
-  // is stale once anything bumped since, and a retry minting against it
-  // would be refused on every attempt.
+  // A REPLAY RETURNS THE EPOCH RECORDED AT FIRST DELIVERY (ADR-0976), read
+  // from the idempotency ledger row, and NOT the user's current epoch. With no
+  // bump since the first delivery, that value is still current and a retry
+  // after a lost response mints. After any later bump (RevokeAllCredentials, a
+  // revoking reset, SetPassword, another redemption), the recorded value is
+  // stale, so the retry's mint is refused with FAILED_PRECONDITION. That is
+  // intended: a replayed key must not yield a credential the later
+  // revocation was meant to end. Rows written before the epoch was recorded
+  // answer 0.
   //
   // Set only when outcome is REDEEM_OUTCOME_REDEEMED; 0 otherwise. An
   // `iam-db` built before ADR-0972 (4) sends 0, which is safe for the reason
