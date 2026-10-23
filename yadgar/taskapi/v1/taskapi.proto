@@ -29,8 +29,9 @@ message CreateTaskRequest {
   // every Meta field are assigned by the module — a client that could set them
   // could collide with, or overwrite, a record it does not own (D42).
   //
-  // At most 128 Unicode scalar values; a longer title is refused with
-  // INVALID_ARGUMENT. The unit and its reasons are on yadgar.task.v1.Task.title.
+  // At most 128 Unicode scalar values. A longer title is refused with
+  // INVALID_ARGUMENT once enforcement ships; the unit, its reasons and when it
+  // is enforced are on yadgar.task.v1.Task.title.
   string title = 3;
   string body = 4;
   repeated string tags = 5;
@@ -86,6 +87,9 @@ message EditTaskRequest {
   // rule is stated here and enforced by the logic service instead.
   string id = 3;
   uint64 expect_version = 4;
+  // At most 128 Unicode scalar values when the mask writes `title`. A longer
+  // title is refused with INVALID_ARGUMENT once enforcement ships; the unit,
+  // its reasons and when it is enforced are on yadgar.task.v1.Task.title.
   string title = 5;
   string body = 6;
   google.protobuf.FieldMask update_mask = 7;
@@ -98,6 +102,10 @@ message EditTaskRequest {
   //
   // THE DIGEST IS OVER THE EXACT UTF-8 BYTES OF `body`, with no normalisation:
   // no trimming, no line-ending conversion, and a trailing newline counts.
+  //
+  // THE FIELD IS THE 32 RAW DIGEST BYTES, NOT A HEX STRING. Hex exists only on
+  // the gateway's MCP surface, which takes 64 lowercase hex characters and
+  // decodes them before it sends this field.
   //
   // EMPTY MEANS NO GUARD, which is what every caller that predates this field
   // sends. Present, it must be exactly 32 bytes, or the edit is refused. It is

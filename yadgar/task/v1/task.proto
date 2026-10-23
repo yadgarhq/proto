@@ -30,12 +30,12 @@ message Task {
   // English one gets, for no storage reason: the column is utf8mb4
   // `VARCHAR(512)`, which holds 512 characters, not 512 bytes.
   //
-  // WHO ENFORCES IT. `yadgar.taskapi.v1.TaskService` refuses a longer title
-  // with INVALID_ARGUMENT on CreateTask, and on an EditTask whose mask writes
-  // `title`. task-db carries the same bound as a CHECK constraint and refuses
-  // a longer title with INVALID_ARGUMENT on any write that stores one. A READ is
-  // never refused for a title's length: rows written before the bound existed
-  // can be longer until they are shortened, and they stay readable.
+  // THE BOUND IS THE CONTRACT; ENFORCEMENT FOLLOWS IT. Once the titles already
+  // stored are shortened, `yadgar.taskapi.v1.TaskService` refuses a longer
+  // title with INVALID_ARGUMENT on CreateTask and on an EditTask whose mask
+  // writes `title`, and task-db refuses one with a CHECK constraint. Until both
+  // ship, a stored title CAN be longer, and a reader must not assume it is at
+  // most 128. A READ is never refused for a title's length.
   string title = 17;
   string body = 18;
   TaskStatus status = 19;
