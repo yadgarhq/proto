@@ -390,8 +390,7 @@ message CreateEnrolmentRequest {
   // administrator who may hold live, possibly stolen, credentials, and the
   // bootstrap caller decides at issue time whether the redemption revokes them.
   // ADR-0966 alone does not give the bootstrap caller this instruction. An
-  // `iam-db` admits the pair from the release that implements ADR-1014; before
-  // that release the refusal above applies in both settings.
+  // `iam-db` admits the pair in that setting (iam-db#104).
   //
   // Absent (the default) is the ordinary path, byte-identical to before: a
   // reset replaces the password and existing credentials keep resolving.
