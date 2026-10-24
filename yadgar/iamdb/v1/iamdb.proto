@@ -385,14 +385,13 @@ message CreateEnrolmentRequest {
   // refusal names the conflict; it reveals nothing about the target because it
   // is decided before the target is read.
   //
-  // WITH `admin_from_team` TRUE, ADR-1010 (status OPEN, not yet ruled)
-  // proposes that the pair is ADMITTED: the bootstrap demand then reaches a
-  // declared administrator who may hold live, possibly stolen, credentials, and
-  // the bootstrap caller decides at issue time whether the redemption revokes
-  // them. ADR-0966 alone does not give the bootstrap caller this instruction.
-  // No `iam-db` admits the pair until ADR-1010 is accepted; until then the
-  // refusal above applies in both settings. If ADR-1010 is rejected, this
-  // paragraph is withdrawn and the refusal stays.
+  // WITH `admin_from_team` TRUE, ADR-1014 (accepted; it ratifies ADR-1010) rules
+  // that the pair is ADMITTED: the bootstrap demand then reaches a declared
+  // administrator who may hold live, possibly stolen, credentials, and the
+  // bootstrap caller decides at issue time whether the redemption revokes them.
+  // ADR-0966 alone does not give the bootstrap caller this instruction. An
+  // `iam-db` admits the pair from the release that implements ADR-1014; before
+  // that release the refusal above applies in both settings.
   //
   // Absent (the default) is the ordinary path, byte-identical to before: a
   // reset replaces the password and existing credentials keep resolving.
