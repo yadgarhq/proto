@@ -158,10 +158,12 @@ message EditTaskRequest {
   //
   // REASON TOKENS. A refusal listed here carries a message that starts with an
   // upper-case reason token and a colon, for a program to branch on. The list
-  // covers EditTask in both modes and is kept here, in one place:
+  // covers EditTask in both modes, and VERSION_MISMATCH also covers
+  // TransitionTask and RemoveTask (ADR-1050). It is kept here, in one place:
   //   VERSION_MISMATCH           FAILED_PRECONDITION, either mode, once task
-  //                              ships ADR-1042: the task as read is not at
-  //                              `expect_version`.
+  //                              ships ADR-1042 (EditTask) or ADR-1050
+  //                              (TransitionTask, RemoveTask): the task as
+  //                              read is not at `expect_version`.
   //   PATCH_COUNT_MISMATCH       FAILED_PRECONDITION: `old` does not occur
   //                              exactly `expect_count` times.
   //   PATCH_RESULT_TOO_LARGE     FAILED_PRECONDITION: the result body is over
@@ -247,6 +249,35 @@ message TransitionTaskRequest {
   // on EditTaskRequest: `number` is 0 when absent and resolves in the caller's
   // exact project only.
   string id = 3;
+  // THE VERSION THE CALLER READ: the compare half of a compare-and-set, as on
+  // EditTaskRequest.
+  //
+  // A STALE VERSION IS REFUSED WITH FAILED_PRECONDITION. Once task ships
+  // ADR-1050, a refusal where this service has read the task within the
+  // caller's reach and found a version other than this one starts with the
+  // reason token VERSION_MISMATCH; until then it carries no token. The caller
+  // re-reads and retries with the version it then sees.
+  //
+  // THE TRANSITION RULE IS DECIDED FIRST. A `to` that is not legal from the
+  // status this service reads is refused with INVALID_ARGUMENT, whatever this
+  // version is.
+  //
+  // A RETRY WITH THE SAME IDEMPOTENCY KEY IS STILL REPLAYED (D9). This
+  // service's version check never runs ahead of the store's replay of a
+  // recorded key. The transition rule above still runs first, so a retry whose
+  // `to` is no longer legal from the status now stored is refused with
+  // INVALID_ARGUMENT, not replayed.
+  //
+  // ONCE task SHIPS ADR-1050, A FAILED_PRECONDITION WITH NO REASON TOKEN is the
+  // store's compare-and-set refusing the write: a writer landed between this
+  // service's read and the write, or the task is out of reach or read-only for
+  // this caller. The store does not say which, deliberately, so no token is
+  // claimed for it. The caller re-reads: a moved version means retry with it;
+  // the same version, or no task, means the retry fails identically.
+  //
+  // REASON TOKENS. Once task ships ADR-1050, TransitionTask carries one token,
+  // VERSION_MISMATCH, with the meaning given in the REASON TOKENS list on
+  // EditTaskRequest.patch (ADR-1050 extends ADR-1042 rule 10 to this RPC).
   uint64 expect_version = 4;
   yadgar.task.v1.TaskStatus to = 5;
   uint32 number = 6;
@@ -262,6 +293,31 @@ message RemoveTaskRequest {
   yadgar.common.v1.Idempotency idempotency = 1;
   yadgar.common.v1.Scope scope = 2;
   string id = 3;
+  // THE VERSION THE CALLER READ: the compare half of a compare-and-set, as on
+  // EditTaskRequest.
+  //
+  // A STALE VERSION IS REFUSED WITH FAILED_PRECONDITION. Once task ships
+  // ADR-1050, a refusal where this service has read the task within the
+  // caller's reach and found a version other than this one starts with the
+  // reason token VERSION_MISMATCH; until then it carries no token. The caller
+  // re-reads and retries with the version it then sees.
+  //
+  // A RETRY WITH THE SAME IDEMPOTENCY KEY IS STILL REPLAYED (D9). A removed
+  // task is no longer readable, so once task ships ADR-1050 a NOT_FOUND from
+  // its pre-write read does not refuse the call: the call goes to the store,
+  // which replays a recorded key. This service's version check never runs
+  // ahead of that replay.
+  //
+  // ONCE task SHIPS ADR-1050, A FAILED_PRECONDITION WITH NO REASON TOKEN is the
+  // store's compare-and-set refusing the write: a writer landed between this
+  // service's read and the write, or the task is out of reach or read-only for
+  // this caller. The store does not say which, deliberately, so no token is
+  // claimed for it. The caller re-reads: a moved version means retry with it;
+  // the same version, or no task, means the retry fails identically.
+  //
+  // REASON TOKENS. Once task ships ADR-1050, RemoveTask carries one token,
+  // VERSION_MISMATCH, with the meaning given in the REASON TOKENS list on
+  // EditTaskRequest.patch (ADR-1050 extends ADR-1042 rule 10 to this RPC).
   uint64 expect_version = 4;
 }
 message RemoveTaskResponse {}
