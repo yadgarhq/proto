@@ -943,11 +943,15 @@ message IssueEnrolmentResponse {
   google.protobuf.Timestamp expires_at = 3;
 }
 
-// D73's BOOTSTRAP TOKEN reaches CreateUser and SetUserAdmin below — create an
-// admin, or promote one — and, since ADR-0655 (amended by ADR-0656), also
-// IssueEnrolment, but ONLY for a target that is an administrator AND holds
-// zero credentials; that predicate is enforced inside `iam-db`'s write, never
-// checked here or at the gateway first. CreateUser and SetUserAdmin stay
+// D73's BOOTSTRAP TOKEN reaches CreateUser and SetUserAdmin below. While
+// `IAM_ADMIN_FROM_TEAM` is false, CreateUser with `is_admin` creates an
+// administrator and SetUserAdmin promotes one. While it is true (ADR-0962),
+// `iam` refuses both of those uses `FAILED_PRECONDITION`, and the bootstrap
+// creates the first administrator through `CreateUserRequest.user_id` instead
+// (ADR-0963 (5)). The token also reaches, since ADR-0655 (amended by
+// ADR-0656), IssueEnrolment, but ONLY for a target that is an administrator
+// AND holds zero credentials; that predicate is enforced inside `iam-db`'s
+// write, never checked here or at the gateway first. CreateUser and SetUserAdmin stay
 // CHECKED AT THE GATEWAY, and there is deliberately no bootstrap RPC on this
 // service: no administrative RPC here carries a credential of any kind,
 // because `iam` is not reachable from outside and the gateway is the one

@@ -577,13 +577,13 @@ message RegisteredPath {
 // ADR-0511 kept), and a contract demanding one from a caller that cannot have
 // one is a contract that caller cannot satisfy.
 //
-// AND THE STORE STILL DEMANDS ONE, so this shape does not by itself make the
-// call possible. `project-db/src/read.rs` opens `list` with
-// `scope_of(&req.scope)?` and `project-db/src/sql.rs` refuses an absent Scope
-// with "scope is required and is attested by the gateway". The store half of
-// this contract is tagged and implemented and is NOT changed here, so whoever
-// builds `project` meets that wall on the hot-path verb rather than only on the
-// staged flush timer. Named rather than papered over.
+// THE STORE DOES NOT DEMAND ONE. `ProjectDbService.ListProjects`,
+// `ResolveProject` and `GetProject` accept an absent Scope, because no read
+// filters, keys or partitions on it (`project-db/src/sql.rs`, `scope_of`'s
+// documentation; pinned by `project-db` `tests/list.rs`,
+// `list_accepts_an_absent_scope`). `RegisterProject` and `TouchProjects` still
+// refuse an absent Scope with "scope is required and is attested by the
+// gateway", so this relaxation covers the three reads and nothing else.
 message ProjectServiceListProjectsRequest {
   // A REQUEST, NOT A GUARANTEE, and a caller that has no number to pass sends
   // none. The page a caller can actually be given is derived from BYTES rather
