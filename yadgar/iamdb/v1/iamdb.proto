@@ -1143,7 +1143,7 @@ message RemoveTeamMemberResponse {}
 message DeclaredTeam {
   // id is "yadgar:team:" + name.
   string name = 1;
-  // "yadgar:user:<uuidv7>".
+  // `yadgar:user:<uuidv7>`.
   repeated string member_user_ids = 2;
 }
 // ONE TRANSACTION, READ COMMITTED (ADR-0513), serialised against other syncs

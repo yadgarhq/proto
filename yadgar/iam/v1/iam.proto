@@ -1305,7 +1305,7 @@ message DeclaredTeam {
   // Matches `^[a-z][a-z0-9-]{0,62}$`. Unique within a declaration. A rename is
   // an archive plus a new team.
   string name = 1;
-  // "yadgar:user:<lowercase canonical uuidv7>". The whole member set: members
+  // `yadgar:user:<lowercase canonical uuidv7>`. The whole member set: members
   // not listed are removed. No duplicates.
   repeated string member_user_ids = 2;
 }
