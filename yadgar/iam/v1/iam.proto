@@ -741,6 +741,52 @@ message ListCredentialsResponse {
   string next_page_token = 2;
 }
 
+// Name the `user_id` behind an operator-facing username (ledger 1614,
+// yaadgaar #270). The only route from an `external_id` to an id: CreateUser
+// answers the id once, and an operator who did not record it (an estate
+// service account, a user created before the id was kept) otherwise cannot
+// reach RevokeAllCredentials, ListCredentials or SetUserAdmin for that person,
+// because each of those takes a `user_id`.
+//
+// WHO MAY CALL IT is the gateway's policy, as it is for ListCredentials beside
+// it (ADR-0488): AN ATTESTED ADMINISTRATOR ONLY, NEVER THE BOOTSTRAP TOKEN, AND
+// THROTTLED. The gateway refuses every other caller BEFORE IT CALLS THIS RPC,
+// with the refusal any admin route gives, so a non-administrator learns
+// nothing about which usernames exist, not even from the response time. That
+// refusal is the whole enumeration control: an administrator who passes it is
+// told whether a username exists, which is exactly what this verb is for.
+//
+// `external_id` IS NORMALISED AND BLIND-INDEXED EXACTLY AS CreateUser AND
+// Login DO, with the same key and the same normalisation, so a username that
+// logs in is a username this finds. `iam` sends only the blind index to
+// `iam-db` (yadgar.iamdb.v1.LookupUserRequest); the plaintext stops here.
+// Neither `iam` nor the gateway may log it or record it in telemetry (D72).
+//
+// NOT_FOUND MEANS NO LIVE `iam_user` ROW HAS THIS USERNAME: none at all, or
+// only a soft-deleted one (the predicate Login uses). It is the same NOT_FOUND
+// whichever it is. A user with no password yet (created, never enrolled) IS
+// found: the lookup reads `iam_user` alone, not `iam_password`.
+//
+// AN EMPTY `external_id`, OR ONE LONGER THAN CreateUserRequest.external_id's
+// 484-byte bound, is INVALID_ARGUMENT before any store call: no row can carry
+// it, and the bound is the same one.
+//
+// A READ: no `Idempotency`, nothing written, and a retry is safe.
+message LookupUserRequest {
+  string external_id = 1;
+
+  // WHO THE GATEWAY BELIEVED WAS CALLING, FOR THE AUDIT RECORD ONLY. This
+  // service cannot verify it and MUST NOT authorise on it. The rule is stated
+  // once, on yadgar.common.v1.UnverifiedActor, rather than restated here.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 2;
+}
+message LookupUserResponse {
+  // `yadgar:user:<uuidv7>`. Always set on OK; the unknown answer is NOT_FOUND,
+  // never an empty id (ADR-0512). NOTHING ELSE about the user is returned: not
+  // the display name, not `is_admin`, not a credential.
+  string user_id = 1;
+}
+
 // Mint the enrolment an admin hands to a person (D73).
 //
 // SEPARATE FROM CreateUser, though the two are normally called together.
@@ -1324,6 +1370,9 @@ service IamService {
   rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
   rpc RevokeAllCredentials(RevokeAllCredentialsRequest) returns (RevokeAllCredentialsResponse);
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
+  // Username to `user_id`, for an attested administrator only; see
+  // LookupUserRequest.
+  rpc LookupUser(LookupUserRequest) returns (LookupUserResponse);
   rpc IssueEnrolment(IssueEnrolmentRequest) returns (IssueEnrolmentResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc SetUserAdmin(SetUserAdminRequest) returns (SetUserAdminResponse);
