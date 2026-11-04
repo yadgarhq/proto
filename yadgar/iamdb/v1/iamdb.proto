@@ -244,6 +244,37 @@ message GetPasswordHashResponse {
   uint64 credential_epoch = 3;
 }
 
+// The read behind yadgar.iam.v1.LookupUser (ledger 1614, yaadgaar #270): the
+// live `iam_user` row whose `external_id_blind_index` equals the one sent,
+// answered as its id and nothing else.
+//
+// THE PLAINTEXT USERNAME NEVER CROSSES THIS BOUNDARY, as for
+// GetPasswordHashRequest: `iam` computes the blind index. This is NOT
+// GetPasswordHash under another name. That RPC joins `iam_password`, so it
+// misses a user who never set a password, and it hands back the hash, which a
+// lookup has no use for.
+//
+// `deleted_at IS NULL`, as GetPasswordHash's statement has it: a soft-deleted
+// row is not found. The blind index is UNIQUE (`uq_iam_user_blind_index`), so
+// at most one row matches.
+//
+// NOT_FOUND when no live row matches, never an empty `user_id` with OK. An
+// empty `external_id_blind_index`, or one that is not 32 bytes (HMAC-SHA256),
+// is INVALID_ARGUMENT with no query run.
+//
+// A READ: no `Idempotency`, nothing written.
+message LookupUserRequest {
+  bytes external_id_blind_index = 1;
+
+  // `iam` relays yadgar.iam.v1.LookupUserRequest.unverified_actor here
+  // unchanged, for the audit record only. This service MUST NOT authorise on
+  // it; see yadgar.common.v1.UnverifiedActor.
+  yadgar.common.v1.UnverifiedActor unverified_actor = 2;
+}
+message LookupUserResponse {
+  string user_id = 1;
+}
+
 // Replace a password for a user who already has one.
 //
 // UNUSED IN THE FIRST CUT. Enrolment sets the first password, and it does so
@@ -1738,6 +1769,7 @@ message AdoptKeyIdentityResponse {
 service IamDbService {
   rpc ResolveCredential(ResolveCredentialRequest) returns (ResolveCredentialResponse);
   rpc GetPasswordHash(GetPasswordHashRequest) returns (GetPasswordHashResponse);
+  rpc LookupUser(LookupUserRequest) returns (LookupUserResponse);
   rpc SetPassword(SetPasswordRequest) returns (SetPasswordResponse);
   rpc CreateEnrolment(CreateEnrolmentRequest) returns (CreateEnrolmentResponse);
   rpc RedeemEnrolment(RedeemEnrolmentRequest) returns (RedeemEnrolmentResponse);
