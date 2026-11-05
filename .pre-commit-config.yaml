@@ -12,7 +12,9 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: check-merge-conflict
+        args: [--assume-in-merge]
       - id: check-added-large-files
+        args: [--enforce-all]
       # PARSE GATES. A file a parser cannot load at all still passes any check
       # that reads it as text and regexes it — which is how a malformed compose
       # file once kept every version gate green in the predecessor repo.
