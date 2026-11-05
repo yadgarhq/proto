@@ -32,7 +32,7 @@ repos:
   # `pre-commit autoupdate`.
 
   - repo: https://github.com/yadgarhq/actions
-    rev: v1.65.0
+    rev: v1.65.1
     hooks:
       - id: gitleaks
       - id: prettier
