@@ -1269,7 +1269,9 @@ enum KeyIdentityOutcome {
   KEY_IDENTITY_OUTCOME_ABSENT = 3;
 
   // The marker was absent and the recording call wrote it. SetKeyIdentity
-  // and AdoptKeyIdentity ONLY — the two arms that write — and a REPLAY of
+  // and AdoptKeyIdentity ONLY — the two arms that RECORD a first marker. The
+  // third arm that writes the marker, RotateKeyIdentity, REPLACES one and
+  // answers with a count rather than any member of this enum. A REPLAY of
   // either call under its original key answers RECORDED
   // again rather than MATCH — D9's ordinary rule, that a replay returns the
   // ORIGINAL outcome, exactly as RedeemEnrolment replays REDEEMED rather than
@@ -1493,6 +1495,12 @@ message GetKeyIdentityResponse {
 // rows it cannot read behind an assertion that they are fine. The gate would
 // then exist and be unable to fail, which is the defect ADR-0764 names.
 //
+// WRITE-ONCE ON THIS ARM AND ON AdoptKeyIdentity. ONE ARM REPLACES A STORED
+// MARKER: RotateKeyIdentity below, and only in the same transaction that
+// rewrites every key-bearing row under the new key set (ADR-0989). A pod
+// cannot use it to make itself pass, because it must also hand over every
+// row re-encrypted under the key set it names.
+//
 // THE COMPARISON AND THE INSERT ARE ONE STATEMENT, one transaction (D5), for
 // the reason RedeemEnrolment states: a read followed by a write is the same
 // race with a longer window. Two replicas rolling out under DIFFERENT key sets
@@ -1650,7 +1658,9 @@ message KeyIdentityEvidence {
 
 // The read behind AdoptKeyIdentity's proof: the key-bearing columns of
 // `iam_user`, OLDEST FIRST. THE FIRST ARM ON THIS BOUNDARY THAT RETURNS
-// CIPHERTEXT IN BULK, and its only caller is `iam`'s key-identity check.
+// CIPHERTEXT IN BULK. It has TWO callers, both `iam`: the key-identity check,
+// and the `iam rotate-keys` Job (ADR-0989), which reads EVERY page and hands
+// every row back to RotateKeyIdentity below.
 //
 // THE ORDER IS FIXED, ASCENDING BY CREATION AND THEN BY ID, AND IT IS
 // LOAD-BEARING. An `iam` that has not passed the check stays Ready and
@@ -1676,8 +1686,9 @@ message KeyIdentityEvidence {
 // default and a larger one is capped; `page_token` is opaque, and an empty
 // `next_page_token` is the last page. An empty store answers OK with no rows.
 // The token encodes a KEYSET POSITION, the last (created_at, id) served, and
-// never an OFFSET. How many rows `iam` reads is set by AdoptKeyIdentity's cap
-// of 64 below; this arm only serves them.
+// never an OFFSET. How many rows `iam` reads is set by the caller's arm:
+// AdoptKeyIdentity's cap of 64, or RotateKeyIdentity's rule that every row is
+// covered. This arm only serves them.
 message ListKeyIdentityEvidenceRequest {
   int32 page_size = 1;
   string page_token = 2;
@@ -1766,6 +1777,208 @@ message AdoptKeyIdentityResponse {
   KeyIdentityOutcome outcome = 1;
 }
 
+// A stored key-identity marker: the PAIR ADR-0765 defines, version and
+// fingerprint together. The same two fields under the same rules as on
+// GetKeyIdentityRequest: opaque here, never the key, an empty
+// `key_fingerprint` and a zero `derivation_version` refused with
+// INVALID_ARGUMENT.
+message KeyIdentityMarker {
+  uint32 derivation_version = 1;
+  bytes key_fingerprint = 2;
+}
+
+// The caller's statement that NO marker is stored. A message of its own, and
+// not an unset field, so that a caller that populates nothing has stated
+// nothing and is refused (RotateKeyIdentityRequest states the rule).
+message NoKeyIdentityMarker {}
+
+// One `iam_user` row in a rotation: the key-bearing bytes the caller READ, and
+// the bytes that replace them.
+//
+// THE OLD BYTES ARE THE ROW'S COMPARE-AND-SWAP, AND THEY ARE WHAT BINDS THE
+// PROOF TO THE WRITE. `iam` proves the old key set by decrypting exactly these
+// bytes (ADR-0989, step 4). The rewrite is valid only if the store still holds
+// exactly the bytes that were proved, so the store compares all three for byte
+// equality before it writes anything. A row whose bytes changed after the read
+// was never proved, and the rotation is refused.
+//
+// NOT `expect_version` (D8), and the departure is deliberate. The proof is over
+// bytes, not over a version number, and a version check is only as good as
+// every writer advancing the version. This store does not hold that invariant
+// for `iam_user` today: SetUserAdmin updates the row and leaves `version`
+// alone. Byte equality needs no invariant.
+//
+// THE THREE COLUMNS DERIVED FROM THE KEY SET, AND NOTHING ELSE, as on
+// KeyIdentityEvidence. `is_admin`, team membership and every other column are
+// untouched by a rotation.
+message KeyRotationRow {
+  // The row's id, as ListKeyIdentityEvidence returned it.
+  string user_id = 1;
+
+  // The bytes as read from ListKeyIdentityEvidence, exactly. Empty is refused
+  // with INVALID_ARGUMENT: the store holds no row with an empty column, so an
+  // empty value can only be a caller that populated nothing.
+  bytes expect_external_id_ciphertext = 2;
+  bytes expect_display_name_ciphertext = 3;
+  bytes expect_external_id_blind_index = 4;
+
+  // The replacement bytes, computed by `iam` under the NEW key set: both
+  // ciphertexts re-encrypted with AES-256-GCM under the new encryption key,
+  // and the blind index recomputed with HMAC-SHA256 under the new blind-index
+  // key. Opaque here, as on CreateUserRequest. Empty is refused with
+  // INVALID_ARGUMENT. A value that does not fit the column CreateUser stores it
+  // in is refused with INVALID_ARGUMENT.
+  bytes external_id_ciphertext = 5;
+  bytes display_name_ciphertext = 6;
+  bytes external_id_blind_index = 7;
+}
+
+// Rotate the `iam` key set (ADR-0989): rewrite the key-bearing columns of
+// EVERY `iam_user` row and REPLACE the key-identity marker, in ONE transaction
+// (D5). After it commits, every row is under the new key set and the marker
+// names the new key set. A partial rotation is not a state this store can
+// hold.
+//
+// THE ONLY ARM THAT REPLACES A STORED MARKER. SetKeyIdentity and
+// AdoptKeyIdentity stay write-once. This arm can replace the marker only
+// because it carries the whole corpus under the new key set at the same time.
+//
+// ITS ONLY CALLER IS THE `iam rotate-keys` JOB, run with every `iam` replica
+// stopped (ADR-0989, step 2). The Job reads every page of
+// ListKeyIdentityEvidence, decrypts both ciphertexts of every row under the old
+// encryption key, recomputes every blind index under the old blind-index key
+// and compares it, re-encrypts and re-indexes under the new keys, and then
+// calls this arm once. Any row that fails the old-key proof aborts the Job
+// before this arm is called.
+//
+// THE PROOF IS `iam`'s AND THIS SERVICE NEVER MAKES IT, for the reason
+// AdoptKeyIdentity states: this service holds no key (D72) and never sees a
+// plaintext. WHAT THIS SERVICE CHECKS IS THAT THE PROOF COVERS THE STORE AS IT
+// IS, NOW, IN THE TRANSACTION THAT WRITES:
+//
+// 1. The marker compare-and-swap. The stored marker equals `expect_stored`, or
+//    no marker is stored and the caller sent `expect_absent`. A store with no
+//    marker is rotated like any other (ADR-0989; the ledger 1155 case), and the
+//    rotation records the new marker.
+// 2. Coverage. `rows` names EVERY `iam_user` row, SOFT-DELETED ROWS INCLUDED,
+//    each exactly once, and no id that names no row. A soft-deleted row still
+//    holds ciphertext under the old key set, and leaving it there would leave a
+//    row the new keys cannot read.
+// 3. The per-row compare-and-swap. Each row's stored bytes equal its three
+//    `expect_*` fields.
+//
+// The checks and the writes run in one transaction that locks every
+// `iam_user` row and the marker row before it reads them, so no row can be
+// created or changed between the check and the write. THIS IS WHAT TURNS AN
+// OPERATOR WHO DID NOT STOP `iam` INTO A REFUSAL: a CreateUser that commits
+// before the lock fails the coverage check, and a write that changed a row
+// fails that row's compare-and-swap. A CreateUser that commits AFTER the
+// rotation, from an `iam` still running under the old keys, is outside what
+// this arm can see; the key-identity check (ADR-0764) is the guard for that
+// error, as ADR-0989 states.
+//
+// THE COMPARE-AND-SWAP GUARDS AGAINST MISTAKES AND RACES, NOT AGAINST A
+// HOSTILE CALLER. The stored fingerprint is not secret: anyone holding a backup
+// of this store can read it. The trust boundary is the `iam-caller`
+// client-certificate gate that every arm on this service sits behind
+// (ADR-0972 (1)), and nothing here adds to it or replaces it.
+//
+// EACH REWRITTEN ROW ADVANCES ITS `version` and its `updated_at`, as D8 says
+// every successful update does. Nothing else about the row changes.
+//
+// THE REFUSALS, EXHAUSTIVELY. NOTHING IS WRITTEN ON ANY OF THEM.
+//
+// - INVALID_ARGUMENT, a fault in the request: `expect_marker` unset;
+//   `marker` unset; an empty `key_fingerprint` or a zero
+//   `derivation_version`, in `marker` or in
+//   `expect_stored`; a new marker EQUAL to `expect_stored` in both fields;
+//   empty `rows`; an empty `user_id` or a duplicate `user_id`; an empty bytes
+//   field in any row; a value that does not fit its column; two rows with the
+//   same new `external_id_blind_index` (the column is UNIQUE); and D9's replay
+//   of a key under a different payload.
+// - FAILED_PRECONDITION, the marker compare-and-swap failed: a marker is
+//   stored and differs from `expect_stored` in either field, a marker is
+//   stored and the caller sent `expect_absent`, or no marker is stored and the
+//   caller sent `expect_stored`.
+// - ABORTED, the rows are not the rows the caller read: an `iam_user` row is
+//   missing from `rows`, an id in `rows` names no row, or a row's stored bytes
+//   differ from its `expect_*` fields.
+//
+// The two store-state refusals carry DIFFERENT codes so that a caller branches
+// on the code and never on a message string. FAILED_PRECONDITION says the
+// marker is not the one the caller expected: a different key set, or a
+// rotation that already committed. ABORTED says the rows changed after the
+// read. The Job RETRIES NEITHER automatically. With `iam` stopped no row
+// should change, so either code means something the operator must find.
+//
+// EMPTY `rows` IS REFUSED, so an EMPTY store cannot be rotated by this arm.
+// Zero rows is no proof, as on AdoptKeyIdentity, and the coverage rule would
+// otherwise let a call with no rows replace the marker over an empty store on
+// no evidence at all. An empty store that holds a marker therefore keeps it.
+//
+// A NEW MARKER EQUAL TO THE STORED ONE IS REFUSED: it is an operator who
+// passed the old keys as the new ones, and the rotation would rewrite every
+// row and change nothing. A new marker that differs ONLY in
+// `derivation_version` is accepted. That is the migration ADR-0765 says a
+// derivation change needs: rewrite the stored marker on purpose.
+//
+// D9: the payload a replay is compared on is the WHOLE request — the expected
+// marker, the new marker and every row. A replay answers the original
+// `rows_rewritten`. A refusal is not recorded under the key, as on
+// AdoptKeyIdentity, so a retry under the same key is evaluated afresh. NOT A
+// MEMBER OF ADR-0519's SINGLE-USE-SECRET CARVE-OUT: this arm mints nothing,
+// and its outcome is a count the store can re-derive.
+//
+// A LOST RESPONSE. If the Job sees no answer, the rotation may have committed.
+// A retry under the SAME key replays. A retry under a FRESH key fails the
+// marker compare-and-swap with FAILED_PRECONDITION, because the stored marker
+// is now the new one. The Job then calls GetKeyIdentity with the NEW key set:
+// MATCH means the rotation committed and is done. Anything else is a fault the
+// operator resolves from the backup taken in ADR-0989 step 1.
+//
+// THE WHOLE CORPUS TRAVELS IN ONE REQUEST, and there is no server-side cursor.
+// Atomicity is the rule (ADR-0989, step 5), and one request is the simplest
+// shape that holds it. The limit is derived from bytes (D56): the request must
+// fit gRPC's message limit, and a corpus that does not fit is refused at the
+// transport with RESOURCE_EXHAUSTED, nothing written. At roughly 400 bytes per
+// row the 4 MB default carries several thousand users; the corpus measured on
+// 2026-10-22 is 11. A corpus that outgrows one request is a reason to revisit
+// ADR-0989, not to split this call.
+//
+// NO `unverified_actor`. The field records who the GATEWAY believed was
+// calling, and no gateway is on this path: an operator starts the Job against
+// this service directly. Who started it is recorded where the Job was started.
+message RotateKeyIdentityRequest {
+  yadgar.common.v1.Idempotency idempotency = 1;
+
+  // The marker the caller expects the store to hold NOW, under the OLD key
+  // set. EXACTLY ONE MEMBER IS SET; neither set is refused with
+  // INVALID_ARGUMENT. An unset oneof never means "expect no marker": that is
+  // the empty-field collapse KeyIdentityOutcome exists to delete.
+  oneof expect_marker {
+    // A marker is stored and equals this pair.
+    KeyIdentityMarker expect_stored = 2;
+    // No marker is stored.
+    NoKeyIdentityMarker expect_absent = 3;
+  }
+
+  // The marker for the NEW key set, stored in place of the old one when the
+  // rotation commits. Rules as on SetKeyIdentityRequest: computed by `iam`,
+  // opaque here, empty and zero refused with INVALID_ARGUMENT.
+  KeyIdentityMarker marker = 4;
+
+  // Every `iam_user` row, soft-deleted rows included, each exactly once. Order
+  // carries no meaning.
+  repeated KeyRotationRow rows = 5;
+}
+message RotateKeyIdentityResponse {
+  // How many `iam_user` rows this rotation rewrote: always the number of
+  // `rows` sent, since a call that could not rewrite every row writes none.
+  // The Job compares it with the number of rows it read and fails on any
+  // difference.
+  uint32 rows_rewritten = 1;
+}
+
 service IamDbService {
   rpc ResolveCredential(ResolveCredentialRequest) returns (ResolveCredentialResponse);
   rpc GetPasswordHash(GetPasswordHashRequest) returns (GetPasswordHashResponse);
@@ -1787,6 +2000,9 @@ service IamDbService {
   rpc SetKeyIdentity(SetKeyIdentityRequest) returns (SetKeyIdentityResponse);
   rpc ListKeyIdentityEvidence(ListKeyIdentityEvidenceRequest) returns (ListKeyIdentityEvidenceResponse);
   rpc AdoptKeyIdentity(AdoptKeyIdentityRequest) returns (AdoptKeyIdentityResponse);
+  // Key rotation (ADR-0989): every key-bearing row and the marker, one
+  // transaction. The rules are on RotateKeyIdentityRequest.
+  rpc RotateKeyIdentity(RotateKeyIdentityRequest) returns (RotateKeyIdentityResponse);
   // The lockout guard (ADR-0963 (6)): a sync that would leave `administrators`
   // with zero live members when it has at least one is refused
   // `FAILED_PRECONDITION`, nothing written. Omitting `administrators` archives
